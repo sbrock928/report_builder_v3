@@ -58,16 +58,6 @@ class ReportCalculation(Base):
     report_template = relationship("ReportTemplate", back_populates="calculations")
     calculation = relationship("Calculation", back_populates="report_calculations")
 
-class UserPreference(Base):
-    """User-specific preferences and saved filters"""
-    __tablename__ = "user_preferences"
-    
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    preference_key: Mapped[str] = mapped_column(String(100), nullable=False)
-    preference_value: Mapped[dict] = mapped_column(JSON, nullable=False)
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 class ReportExecutionLog(Base):
     """Log of report executions for monitoring and debugging"""

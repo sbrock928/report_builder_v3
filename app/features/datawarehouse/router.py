@@ -3,7 +3,7 @@
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 from app.core.dependencies import get_dw_db
 from .service import DataWarehouseService
 
@@ -22,11 +22,22 @@ async def get_available_deals(
 
 @router.get("/tranches")
 async def get_available_tranches(
+    service: DataWarehouseService = Depends(get_datawarehouse_service),
     deal_number: Optional[int] = Query(None, description="Filter tranches by deal number"),
-    service: DataWarehouseService = Depends(get_datawarehouse_service)
+    deal_numbers: Optional[str] = Query(None, description="Comma-separated deal numbers")
 ):
-    """Get list of available tranches, optionally filtered by deal"""
-    return await service.get_available_tranches(deal_number)
+    """Get list of available tranches, optionally filtered by deal(s)"""
+    # Handle both single deal_number and comma-separated deal_numbers
+    if deal_numbers:
+        try:
+            deal_list = [int(x.strip()) for x in deal_numbers.split(',') if x.strip()]
+            return await service.get_available_tranches(deal_list=deal_list)
+        except ValueError:
+            return {"error": "Invalid deal_numbers format"}
+    elif deal_number:
+        return await service.get_available_tranches(deal_number=deal_number)
+    else:
+        return await service.get_available_tranches()
 
 @router.get("/cycles")
 async def get_available_cycles(

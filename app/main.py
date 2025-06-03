@@ -1,11 +1,11 @@
 # app/main.py
-"""Main FastAPI application with feature-based routing"""
+"""Main FastAPI application with refactored feature-based routing"""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-# Import feature routers
+# Import refactored feature routers
 from app.features.reports.router import router as reports_router
 from app.features.calculations.router import router as calculations_router
 from app.features.datawarehouse.router import router as datawarehouse_router
@@ -14,7 +14,7 @@ from app.features.datawarehouse.router import router as datawarehouse_router
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
-    print("Initializing databases...")
+    print("Initializing refactored databases...")
     
     try:
         # Import database functions
@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
         await seed_default_calculations()
         print("✅ Default calculations seeded")
         
-        print("🚀 Application startup complete!")
+        print("🚀 Refactored application startup complete!")
         
     except Exception as e:
         print(f"❌ Error during startup: {e}")
@@ -51,9 +51,9 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="Reporting System API",
-    description="API for generating financial reports with configurable calculations",
-    version="1.0.0",
+    title="Refactored Reporting System API",
+    description="ORM-based API for generating financial reports with template-based configurations",
+    version="2.0.0",
     lifespan=lifespan
 )
 
@@ -66,29 +66,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include feature routers
+# Include refactored feature routers
 app.include_router(reports_router, prefix="/api/reports", tags=["reports"])
 app.include_router(calculations_router, prefix="/api/calculations", tags=["calculations"])
-app.include_router(datawarehouse_router, prefix="/api/reports", tags=["datawarehouse"])
+app.include_router(datawarehouse_router, prefix="/api/datawarehouse", tags=["datawarehouse"])
 
 # Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "message": "Reporting system is running"}
+    return {"status": "healthy", "message": "Refactored reporting system is running"}
 
 @app.get("/")
 async def root():
     """Root endpoint with API information"""
     return {
-        "message": "Reporting System API",
-        "version": "1.0.0",
+        "message": "Refactored Reporting System API",
+        "version": "2.0.0",
         "docs_url": "/docs",
         "health_url": "/health",
         "features": [
-            "reports", 
-            "calculations", 
-            "datawarehouse"
+            "template-based reports", 
+            "orm-based calculations", 
+            "datawarehouse access"
+        ],
+        "key_improvements": [
+            "ORM queries instead of raw SQL",
+            "Report templates stored in database",
+            "LEFT JOIN preservation for complete result sets",
+            "Clean separation of concerns"
         ]
     }
 

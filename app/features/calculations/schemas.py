@@ -1,54 +1,46 @@
 # app/features/calculations/schemas.py
-"""Pydantic schemas for calculations API"""
+"""Pydantic schemas for refactored calculations API"""
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
+from .models import AggregationFunction, SourceModel, GroupLevel
 
-class CalculationRequest(BaseModel):
-    """Request model for creating/updating calculations"""
+class CalculationCreateRequest(BaseModel):
+    """Request model for creating calculations"""
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    formula: str = Field(..., min_length=1)
-    aggregation_method: str = Field(...)
-    group_level: str = Field(..., description="Aggregation level: 'deal', 'tranche', or 'both'")
-    source_tables: List[str] = Field(..., min_items=1)
-    dependencies: Optional[List[str]] = Field(default_factory=list)
+    aggregation_function: AggregationFunction
+    source_model: SourceModel
+    source_field: str = Field(..., min_length=1, max_length=100)
+    group_level: GroupLevel
+    weight_field: Optional[str] = Field(None, max_length=100, description="Required for weighted averages")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "name": "total_ending_balance",
+                "name": "Total Ending Balance",
                 "description": "Sum of all tranche ending balance amounts",
-                "formula": "SUM(tb.tr_end_bal_amt)",
-                "aggregation_method": "SUM",
-                "source_tables": ["tranchebal tb"],
-                "dependencies": []
+                "aggregation_function": "SUM",
+                "source_model": "TrancheBal",
+                "source_field": "tr_end_bal_amt",
+                "group_level": "deal"
             }
         }
 
 class CalculationResponse(BaseModel):
     """Response model for calculation definitions"""
+    id: int
     name: str
-    description: Optional[str] = None
-    formula: str
-    aggregation_method: str
-    group_level: str
-    source_tables: List[str]
-    dependencies: List[str]
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    description: Optional[str]
+    aggregation_function: AggregationFunction
+    source_model: SourceModel
+    source_field: str
+    group_level: GroupLevel
+    weight_field: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[str]
 
     class Config:
-        json_schema_extra = {
-            "example": {
-                "name": "total_ending_balance",
-                "description": "Sum of all tranche ending balance amounts",
-                "formula": "SUM(tb.tr_end_bal_amt)",
-                "aggregation_method": "SUM",
-                "source_tables": ["tranchebal tb"],
-                "dependencies": [],
-                "created_at": "2024-06-03T14:00:00Z",
-                "updated_at": "2024-06-03T14:00:00Z"
-            }
-        }
+        from_attributes = True

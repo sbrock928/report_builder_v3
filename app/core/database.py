@@ -1,12 +1,12 @@
-# app/core/database.py
-"""Database configuration and setup with feature-based imports"""
+# app/core/database.py - Updated with cycle migration
+"""Database configuration with cycle_code moved to execution logs"""
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from typing import Generator
 import os
 
-# Create declarative bases here, not import them
+# Create declarative bases
 DWBase = declarative_base()
 ConfigBase = declarative_base()
 
@@ -51,18 +51,17 @@ async def create_dw_tables():
 
 async def create_config_tables():
     """Create config database tables"""
-    # Import models to register them with the base
+    # Import models to register them with the base - ORDER MATTERS for relationships
     from app.features.calculations.models import Calculation
-    from app.features.reports.models import ReportTemplate, ReportCalculation, ReportExecutionLog
+    from app.features.reports.models import Report, ReportDeal, ReportTranche, ReportCalculation, ReportExecutionLog
     
     engine = create_config_engine()
     ConfigBase.metadata.create_all(bind=engine)
 
 async def seed_sample_data():
-    """Seed sample data into data warehouse"""
+    """Seed sample data into data warehouse (unchanged)"""
     from app.features.datawarehouse.models import Deal, Tranche, TrancheBal
     import random
-    from decimal import Decimal
     
     db = DWSessionLocal()
     try:
@@ -200,8 +199,8 @@ async def seed_sample_data():
         db.close()
 
 async def seed_default_calculations():
-    """Seed default calculations into config database"""
-    from app.features.calculations.models import Calculation
+    """Seed default calculations in new ORM-based format"""
+    from app.features.calculations.models import Calculation, AggregationFunction, SourceModel, GroupLevel
     
     config_db = ConfigSessionLocal()
     try:
@@ -211,51 +210,70 @@ async def seed_default_calculations():
             print(f"Calculations already exist ({existing_count} found), skipping seeding")
             return
 
-        # Default calculations using actual TrancheBal fields
+        # Default calculations using ORM-based approach
         default_calcs = [
             Calculation(
                 name="Total Ending Balance",
                 description="Sum of tranche ending balance amounts",
-                formula="SUM(tb.tr_end_bal_amt)",
-                aggregation_method="SUM",
-                group_level="deal",
-                source_tables=["tranchebal tb"],
+                aggregation_function=AggregationFunction.SUM,
+                source_model=SourceModel.TRANCHE_BAL,
+                source_field="tr_end_bal_amt",
+                group_level=GroupLevel.DEAL,
                 created_by="system"
             ),
             Calculation(
-                name="Total Principal Dist",
+                name="Total Principal Distribution",
                 description="Sum of principal distribution amounts",
-                formula="SUM(tb.tr_prin_dstrb_amt)",
-                aggregation_method="SUM",
-                group_level="deal",
-                source_tables=["tranchebal tb"],
+                aggregation_function=AggregationFunction.SUM,
+                source_model=SourceModel.TRANCHE_BAL,
+                source_field="tr_prin_dstrb_amt",
+                group_level=GroupLevel.DEAL,
                 created_by="system"
             ),
             Calculation(
-                name="Total Interest Dist",
+                name="Total Interest Distribution",
                 description="Sum of interest distribution amounts",
-                formula="SUM(tb.tr_int_dstrb_amt)",
-                aggregation_method="SUM",
-                group_level="deal",
-                source_tables=["tranchebal tb"],
+                aggregation_function=AggregationFunction.SUM,
+                source_model=SourceModel.TRANCHE_BAL,
+                source_field="tr_int_dstrb_amt",
+                group_level=GroupLevel.DEAL,
                 created_by="system"
             ),
             Calculation(
                 name="Tranche Ending Balance",
-                description="Sum of tranche ending balance amounts at tranche level",
-                formula="SUM(tb.tr_end_bal_amt)",
-                aggregation_method="SUM",
-                group_level="tranche",
-                source_tables=["tranchebal tb"],
+                description="Ending balance amount at tranche level",
+                aggregation_function=AggregationFunction.SUM,
+                source_model=SourceModel.TRANCHE_BAL,
+                source_field="tr_end_bal_amt",
+                group_level=GroupLevel.TRANCHE,
                 created_by="system"
             ),
             Calculation(
-                name="Weighted Avg Pass Thru Rate",
-                description="Weighted average pass-through rate",
-                formula="SUM(tb.tr_end_bal_amt * tb.tr_pass_thru_rte) / NULLIF(SUM(tb.tr_end_bal_amt), 0)",
-                aggregation_method="WEIGHTED_AVG",
-                group_level="deal",
-                source_tables=["tranchebal tb"],
+                name="Weighted Average Pass Through Rate",
+                description="Balance-weighted average pass-through rate",
+                aggregation_function=AggregationFunction.WEIGHTED_AVG,
+                source_model=SourceModel.TRANCHE_BAL,
+                source_field="tr_pass_thru_rte",
+                weight_field="tr_end_bal_amt",
+                group_level=GroupLevel.DEAL,
+                created_by="system"
+            ),
+            Calculation(
+                name="Average Accrual Days",
+                description="Average accrual days per deal",
+                aggregation_function=AggregationFunction.AVG,
+                source_model=SourceModel.TRANCHE_BAL,
+                source_field="tr_accrl_days",
+                group_level=GroupLevel.DEAL,
+                created_by="system"
+            ),
+            Calculation(
+                name="Tranche Count",
+                description="Count of tranches per deal",
+                aggregation_function=AggregationFunction.COUNT,
+                source_model=SourceModel.TRANCHE,
+                source_field="tr_id",
+                group_level=GroupLevel.DEAL,
                 created_by="system"
             )
         ]

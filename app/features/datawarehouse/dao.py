@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from .models import Deal, Tranche, TrancheBal
 
-class DataWarehouseRepository:
+class DataWarehouseDAO:
     """Repository for data warehouse data access"""
     
     def __init__(self, db: Session):

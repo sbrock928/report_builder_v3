@@ -4,16 +4,18 @@
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from .models import Deal, Tranche, TrancheBal
+from .dao import DataWarehouseDAO
 
 class DataWarehouseService:
     """Simplified data warehouse service using direct database access"""
     
     def __init__(self, db: Session):
         self.db = db
+        self.dao = DataWarehouseDAO(db)
     
     async def get_available_deals(self) -> List[Dict[str, Any]]:
         """Get list of available deals"""
-        deals = self.db.query(Deal).order_by(Deal.dl_nbr).all()
+        deals = self.dao.get_all_deals()
         
         return [
             {
@@ -51,7 +53,5 @@ class DataWarehouseService:
     
     async def get_available_cycles(self) -> List[Dict[str, int]]:
         """Get list of available cycle codes"""
-        result = self.db.query(TrancheBal.cycle_cde)\
-            .distinct().order_by(TrancheBal.cycle_cde).all()
-        cycles = [row[0] for row in result]
+        cycles = self.dao.get_available_cycles()
         return [{"cycle_cde": cycle} for cycle in cycles]

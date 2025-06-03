@@ -1,12 +1,12 @@
-# app/features/calculations/repository.py
-"""Repository for refactored calculations operations"""
+# app/features/calculations/dao.py
+"""Data Access Object for calculations operations"""
 
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from .models import Calculation, GroupLevel
 
-class CalculationRepository:
-    """Repository for calculation data access"""
+class CalculationDAO:
+    """Data Access Object for calculation data access"""
     
     def __init__(self, db: Session):
         self.db = db

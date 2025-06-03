@@ -8,7 +8,7 @@ from .schemas import (
     AggregationLevel
 )
 from .service import ReportService
-from .repository import ReportRepository
+from .dao import ReportDAO
 
 __all__ = [
     "Report",
@@ -25,5 +25,5 @@ __all__ = [
     "ReportTemplateDetailResponse",
     "AggregationLevel",
     "ReportService",
-    "ReportRepository"
+    "ReportDAO"
 ]

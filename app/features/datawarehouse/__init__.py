@@ -4,7 +4,7 @@
 from .models import Deal, Tranche, TrancheBal
 from .schemas import DealResponse, TrancheResponse, CycleResponse
 from .service import DataWarehouseService
-from .repository import DataWarehouseRepository
+from .dao import DataWarehouseDAO
 
 __all__ = [
     "Deal",
@@ -14,5 +14,5 @@ __all__ = [
     "TrancheResponse", 
     "CycleResponse",
     "DataWarehouseService",
-    "DataWarehouseRepository"
+    "DataWarehouseDAO"
 ]

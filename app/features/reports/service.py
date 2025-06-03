@@ -14,7 +14,7 @@ from .schemas import (
     ReportCreateRequest, ReportUpdateRequest, ReportExecuteRequest,
     ReportResponse, ReportTemplateResponse, ReportTemplateDetailResponse
 )
-from .repository import ReportRepository
+from .dao import ReportDAO
 
 class ReportService:
     """Streamlined report service using unified query engine"""
@@ -22,7 +22,7 @@ class ReportService:
     def __init__(self, config_db: Session, query_engine: QueryEngine):
         self.config_db = config_db
         self.query_engine = query_engine
-        self.repository = ReportRepository(config_db)
+        self.dao = ReportDAO(config_db)
     
     async def create_report_template(self, request: ReportCreateRequest, user_id: str = "api_user") -> ReportTemplateDetailResponse:
         """Create a new report template"""
@@ -352,7 +352,7 @@ class ReportService:
         if not report:
             raise ReportGenerationError(f"Report template {report_id} not found")
         
-        logs = self.repository.get_execution_logs(report_id, limit)
+        logs = self.dao.get_execution_logs(report_id, limit)
         
         return [
             {

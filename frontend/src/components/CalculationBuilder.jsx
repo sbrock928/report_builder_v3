@@ -15,7 +15,7 @@ const CalculationBuilder = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [calculation, setCalculation] = useState({
     name: '',
-    function_type: 'sum',
+    function_type: 'SUM',
     source: '',
     level: 'deal',
     weight_field: '',
@@ -77,7 +77,7 @@ const CalculationBuilder = () => {
   const fetchCalculations = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/calculations/');
+      const response = await fetch('/api/calculations');
       
       if (!response.ok) {
         throw new Error('Failed to fetch calculations');
@@ -99,7 +99,7 @@ const CalculationBuilder = () => {
     setShowPreviewModal(true);
     
     try {
-      const response = await fetch(`http://localhost:8000/api/calculations/${calcId}/preview-sql?aggregation_level=deal&sample_deals=101,102,103&sample_tranches=A,B&sample_cycle=202404`);
+      const response = await fetch(`/api/calculations/${calcId}/preview-sql?aggregation_level=deal&sample_deals=101,102,103&sample_tranches=A,B&sample_cycle=202404`);
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -124,12 +124,23 @@ const CalculationBuilder = () => {
 
     setIsSaving(true);
     try {
-      const response = await fetch('http://localhost:8000/api/calculations/', {
+      // Map frontend field names to backend expected field names
+      const payload = {
+        name: calculation.name,
+        description: calculation.description,
+        aggregation_function: calculation.function_type,
+        source_model: calculation.source,
+        source_field: calculation.source_field,
+        group_level: calculation.level,
+        weight_field: calculation.weight_field || null
+      };
+
+      const response = await fetch('/api/calculations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(calculation),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -143,7 +154,7 @@ const CalculationBuilder = () => {
       // Reset form
       setCalculation({
         name: '',
-        function_type: 'sum',
+        function_type: 'SUM',
         source: '',
         level: 'deal',
         weight_field: '',
@@ -166,7 +177,7 @@ const CalculationBuilder = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/calculations/${id}`, {
+      const response = await fetch(`/api/calculations/${id}`, {
         method: 'DELETE',
       });
 
@@ -205,7 +216,7 @@ const CalculationBuilder = () => {
     setCalculation({
       name: '',
       description: '',
-      function_type: 'sum',
+      function_type: 'SUM',
       source: '',
       source_field: '',
       level: 'deal',
@@ -218,17 +229,17 @@ const CalculationBuilder = () => {
       return 'Select aggregation function and field to see preview';
     }
 
-    const field = `${calculation.source_model}.${calculation.source_field}`;
+    const field = `${calculation.source}.${calculation.source_field}`;
     
     if (calculation.function_type === 'WEIGHTED_AVG') {
-      const weightField = calculation.weight_field ? `${calculation.source_model}.${calculation.weight_field}` : '[weight_field]';
+      const weightField = calculation.weight_field ? `${calculation.source}.${calculation.weight_field}` : '[weight_field]';
       return `SUM(${field} * ${weightField}) / NULLIF(SUM(${weightField}), 0)`;
     }
     
     return `${calculation.function_type}(${field})`;
   };
 
-  const availableFields = getAvailableFields(calculation.source_model);
+  const availableFields = getAvailableFields(calculation.source);
 
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -321,6 +332,7 @@ const CalculationBuilder = () => {
                   onChange={(e) => setCalculation({ ...calculation, source: e.target.value, source_field: '' })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="">Select a source model...</option>
                   {sourceModels.map(model => (
                     <option key={model.value} value={model.value}>
                       {model.label}
@@ -372,7 +384,7 @@ const CalculationBuilder = () => {
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Available fields from {calculation.source_model} model
+                  Available fields from {calculation.source} model
                 </p>
               </div>
 
@@ -410,7 +422,7 @@ const CalculationBuilder = () => {
                 <code className="text-sm text-gray-800 font-mono">{getPreviewFormula()}</code>
               </div>
               <div className="text-xs text-gray-500 mt-1">
-                <strong>Model:</strong> {calculation.source_model} | 
+                <strong>Model:</strong> {calculation.source} | 
                 <strong> Function:</strong> {calculation.function_type} | 
                 <strong> Level:</strong> {calculation.level}
               </div>
@@ -504,7 +516,7 @@ const CalculationBuilder = () => {
                     Edit
                   </button>
                   <button
-                    onClick={() => handleDelete(calc.id, calc.name)}
+                    onClick={() => handleDeleteCalculation(calc.id, calc.name)}
                     className="flex items-center gap-1 bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
                     title="Delete"
                   >

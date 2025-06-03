@@ -143,17 +143,31 @@ const ReportTemplateBuilder = () => {
     if (formData.selected_calculations.length === 0) validationErrors.push('At least one calculation must be selected');
     
     if (validationErrors.length > 0) {
-      setError('Please fix the following errors:\n' + validationErrors.join('\n'));
+      setError(validationErrors.join(', '));
       return;
     }
 
     try {
-      const response = await fetch('/api/reports/templates', {
-        method: 'POST',
+      // Use PUT for editing existing template, POST for creating new template
+      const url = editingTemplate 
+        ? `/api/reports/templates/${editingTemplate.id}`
+        : '/api/reports/templates';
+      
+      const method = editingTemplate ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData), // No cycle_code
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description,
+          aggregation_level: formData.aggregation_level,
+          selected_deals: formData.selected_deals,
+          selected_tranches: formData.selected_tranches,
+          selected_calculations: formData.selected_calculations
+        }),
       });
 
       if (response.ok) {
@@ -161,12 +175,12 @@ const ReportTemplateBuilder = () => {
         handleCancel();
         setError(null);
       } else {
-        const error = await response.json();
-        setError(`Error: ${error.detail}`);
+        const errorData = await response.json();
+        setError(errorData.detail || `Failed to ${editingTemplate ? 'update' : 'create'} template`);
       }
     } catch (error) {
-      console.error('Error creating template:', error);
-      setError('Error creating template');
+      console.error(`Error ${editingTemplate ? 'updating' : 'creating'} template:`, error);
+      setError(`Error ${editingTemplate ? 'updating' : 'creating'} template`);
     }
   };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Filter, BarChart3, FileText, Download, Clock, CheckCircle } from 'lucide-react';
+import { Play, Filter, BarChart3, FileText, Download, Clock, CheckCircle, Eye, EyeOff, Code, Copy, Check } from 'lucide-react';
 
 const ReportBuilder = () => {
   const [reportData, setReportData] = useState({
@@ -21,11 +21,32 @@ const ReportBuilder = () => {
 
   const [reportResult, setReportResult] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showSqlPreview, setShowSqlPreview] = useState(false);
+  const [sqlPreviewData, setSqlPreviewData] = useState(null);
+  const [loadingSqlPreview, setLoadingSqlPreview] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchAvailableOptions();
   }, []);
+
+  useEffect(() => {
+    // Fetch filtered calculations when aggregation level changes
+    fetchFilteredCalculations();
+    
+    // Clear SQL preview when aggregation level changes
+    if (showSqlPreview) {
+      setSqlPreviewData(null);
+    }
+  }, [reportData.aggregation_level]);
+
+  useEffect(() => {
+    // Clear SQL preview when key report parameters change
+    if (showSqlPreview && sqlPreviewData) {
+      setSqlPreviewData(null);
+    }
+  }, [reportData.selected_deals, reportData.selected_tranches, reportData.cycle_code, reportData.calculations]);
 
   useEffect(() => {
     // Fetch tranches when deals are selected
@@ -39,27 +60,85 @@ const ReportBuilder = () => {
 
   const fetchAvailableOptions = async () => {
     try {
-      const [dealsRes, cyclesRes, calculationsRes] = await Promise.all([
+      console.log('Fetching available options...');
+      const [dealsRes, cyclesRes, tranchesRes] = await Promise.all([
         fetch('/api/reports/deals'),
         fetch('/api/reports/cycles'),
-        fetch('/api/reports/calculations')
+        fetch('/api/reports/tranches')
       ]);
 
-      const [deals, cycles, calculations] = await Promise.all([
+      console.log('Response status:', { 
+        deals: dealsRes.status, 
+        cycles: cyclesRes.status, 
+        tranches: tranchesRes.status 
+      });
+
+      if (!dealsRes.ok || !cyclesRes.ok || !tranchesRes.ok) {
+        throw new Error('Failed to fetch options');
+      }
+
+      const [deals, cycles, tranches] = await Promise.all([
         dealsRes.json(),
         cyclesRes.json(),
-        calculationsRes.json()
+        tranchesRes.json()
       ]);
+
+      console.log('Fetched data:', { deals, cycles, tranches });
 
       setAvailableOptions(prev => ({
         ...prev,
-        deals,
-        cycles,
-        calculations
+        deals: Array.isArray(deals) ? deals : [],
+        cycles: Array.isArray(cycles) ? cycles : [],
+        tranches: Array.isArray(tranches) ? tranches : []
       }));
     } catch (error) {
       console.error('Error fetching options:', error);
       setError('Failed to load available options');
+      // Ensure we always have arrays even if API fails
+      setAvailableOptions(prev => ({
+        ...prev,
+        deals: [],
+        cycles: [],
+        tranches: []
+      }));
+    }
+  };
+
+  const fetchFilteredCalculations = async () => {
+    try {
+      const response = await fetch(`/api/reports/calculations?group_level=${reportData.aggregation_level}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch calculations');
+      }
+      
+      const filteredCalculations = await response.json();
+
+      setAvailableOptions(prev => ({
+        ...prev,
+        calculations: Array.isArray(filteredCalculations) ? filteredCalculations : []
+      }));
+
+      // Clear selected calculations that are no longer available
+      if (Array.isArray(filteredCalculations)) {
+        const availableCalcNames = filteredCalculations.map(calc => calc.name);
+        const validSelections = reportData.calculations.filter(calcName => 
+          availableCalcNames.includes(calcName)
+        );
+        
+        if (validSelections.length !== reportData.calculations.length) {
+          setReportData(prev => ({ ...prev, calculations: validSelections }));
+        }
+      }
+
+    } catch (error) {
+      console.error('Error fetching calculations:', error);
+      setError('Failed to load available calculations');
+      // Ensure we always have an array
+      setAvailableOptions(prev => ({
+        ...prev,
+        calculations: []
+      }));
     }
   };
 
@@ -106,6 +185,52 @@ const ReportBuilder = () => {
     if (reportData.calculations.length === 0) errors.push('At least one calculation must be selected');
     
     return errors;
+  };
+
+  const generateSqlPreview = async () => {
+    const validationErrors = validateReport();
+    if (validationErrors.length > 0) {
+      setError('Please complete all required fields before previewing SQL');
+      return;
+    }
+
+    setLoadingSqlPreview(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/reports/preview-sql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(reportData),
+      });
+
+      if (response.ok) {
+        const previewData = await response.json();
+        setSqlPreviewData(previewData);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.detail || 'Failed to generate SQL preview');
+        setSqlPreviewData(null);
+      }
+    } catch (error) {
+      console.error('Error generating SQL preview:', error);
+      setError('Network error while generating SQL preview');
+      setSqlPreviewData(null);
+    } finally {
+      setLoadingSqlPreview(false);
+    }
+  };
+
+  const copyToClipboard = async (sql, label = 'sql') => {
+    try {
+      await navigator.clipboard.writeText(sql);
+      setCopiedSql(label);
+      setTimeout(() => setCopiedSql(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy SQL:', err);
+    }
   };
 
   const generateReport = async () => {
@@ -305,11 +430,14 @@ const ReportBuilder = () => {
 
             {/* Calculation Selection */}
             <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="text-lg font-semibold mb-4 text-gray-800">
+              <h3 className="text-lg font-semibold mb-2 text-gray-800">
                 Select Calculations * ({reportData.calculations.length} selected)
               </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Showing calculations available for <span className="font-medium capitalize">{reportData.aggregation_level}</span> level reporting
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {availableOptions.calculations.map(calc => (
+                {Array.isArray(availableOptions.calculations) && availableOptions.calculations.map(calc => (
                   <label key={calc.name} className="flex items-start p-3 border border-gray-200 rounded-md hover:bg-white cursor-pointer bg-gray-25">
                     <input
                       type="checkbox"
@@ -320,7 +448,17 @@ const ReportBuilder = () => {
                     <div>
                       <div className="font-medium text-gray-900">{calc.name}</div>
                       <div className="text-sm text-gray-500">{calc.description}</div>
-                      <div className="text-xs text-blue-600 mt-1">{calc.aggregation_method}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="text-xs text-blue-600">{calc.aggregation_method}</div>
+                        <div className={`text-xs px-1 py-0.5 rounded ${
+                          calc.group_level === 'deal' ? 'bg-green-100 text-green-700' :
+                          calc.group_level === 'tranche' ? 'bg-purple-100 text-purple-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {calc.group_level === 'both' ? 'Both' : 
+                           calc.group_level === 'deal' ? 'Deal' : 'Tranche'}
+                        </div>
+                      </div>
                     </div>
                   </label>
                 ))}
@@ -350,6 +488,125 @@ const ReportBuilder = () => {
                   </>
                 )}
               </button>
+
+              {/* SQL Preview Button */}
+              <button
+                onClick={async () => {
+                  if (showSqlPreview) {
+                    setShowSqlPreview(false);
+                    setSqlPreviewData(null);
+                  } else {
+                    setShowSqlPreview(true);
+                    await generateSqlPreview();
+                  }
+                }}
+                disabled={loadingSqlPreview}
+                className="w-full flex items-center justify-center gap-2 bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors mt-3"
+              >
+                {loadingSqlPreview ? (
+                  <>
+                    <Clock className="h-4 w-4 animate-spin" />
+                    Loading SQL...
+                  </>
+                ) : showSqlPreview ? (
+                  <>
+                    <EyeOff className="h-4 w-4" />
+                    Hide SQL Preview
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4" />
+                    Preview SQL Query
+                  </>
+                )}
+              </button>
+
+              {/* SQL Preview Display */}
+              {showSqlPreview && (
+                <div className="mt-4 bg-gray-900 rounded-lg p-4 border-2 border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Code className="h-4 w-4 text-gray-400" />
+                      <span className="text-sm text-gray-400 font-medium">Report SQL Query</span>
+                    </div>
+                    {sqlPreviewData && (
+                      <button
+                        onClick={() => copyToClipboard(
+                          sqlPreviewData.optimized_query || 'No SQL available',
+                          'report-sql'
+                        )}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                      >
+                        {copiedSql === 'report-sql' ? (
+                          <>
+                            <Check className="h-3 w-3" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3 w-3" />
+                            Copy
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  
+                  {loadingSqlPreview ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin h-6 w-6 border-2 border-blue-400 border-t-transparent rounded-full"></div>
+                      <span className="ml-3 text-gray-400">Generating SQL preview...</span>
+                    </div>
+                  ) : sqlPreviewData ? (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs text-gray-400 mb-2 font-medium">Optimized Query (LEFT JOINs):</div>
+                        <pre className="text-sm text-green-400 font-mono whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto">
+                          {sqlPreviewData.optimized_query}
+                        </pre>
+                      </div>
+                      
+                      {sqlPreviewData.simple_query && (
+                        <div>
+                          <div className="text-xs text-gray-400 mb-2 font-medium">Simple Query (Single JOIN):</div>
+                          <pre className="text-sm text-yellow-400 font-mono whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto">
+                            {sqlPreviewData.simple_query}
+                          </pre>
+                        </div>
+                      )}
+                      
+                      {sqlPreviewData.optimized_parameters && Object.keys(sqlPreviewData.optimized_parameters).length > 0 && (
+                        <div className="mt-3 p-2 bg-blue-900 rounded text-xs text-blue-200">
+                          <strong>Parameters:</strong>
+                          <pre className="mt-1 whitespace-pre-wrap">
+                            {JSON.stringify(sqlPreviewData.optimized_parameters, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      
+                      <div className="mt-3 p-2 bg-purple-900 rounded text-xs text-purple-200">
+                        <strong>Report Details:</strong>
+                        <div className="mt-1">
+                          <div><strong>Level:</strong> {sqlPreviewData.aggregation_level}</div>
+                          <div><strong>Calculations:</strong> {sqlPreviewData.selected_calculations?.join(', ')}</div>
+                          <div><strong>Deals:</strong> {sqlPreviewData.filter_summary?.deals?.join(', ')}</div>
+                          <div><strong>Tranches:</strong> {sqlPreviewData.filter_summary?.tranches?.join(', ')}</div>
+                          <div><strong>Cycle:</strong> {sqlPreviewData.filter_summary?.cycle}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-gray-400 text-sm py-4">
+                      Complete the form fields to see SQL preview
+                    </div>
+                  )}
+                  
+                  <div className="mt-3 p-2 bg-blue-900 rounded text-xs text-blue-200">
+                    <strong>💡 Tip:</strong> The optimized query uses subquery LEFT JOINs for better performance.
+                    The simple query shows an alternative single-JOIN approach for comparison.
+                  </div>
+                </div>
+              )}
 
               {reportResult && (
                 <div className="mt-4 space-y-3">
@@ -408,6 +665,12 @@ const ReportBuilder = () => {
                   <span className="text-gray-600">Calculations:</span>
                   <span className="font-medium">{reportData.calculations.length}</span>
                 </div>
+                {sqlPreviewData && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">SQL Ready:</span>
+                    <span className="font-medium text-green-600">✓ Yes</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -433,6 +696,9 @@ const ReportBuilder = () => {
                         Tranche ID (tr_id)
                       </th>
                     )}
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Cycle Code (cycle_cde)
+                    </th>
                     {reportResult.columns.map(col => (
                       <th key={col} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         {col.replace('_', ' ')}
@@ -451,6 +717,9 @@ const ReportBuilder = () => {
                           {row.tr_id}
                         </td>
                       )}
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                        {row.cycle_cde}
+                      </td>
                       {reportResult.columns.map(col => (
                         <td key={col} className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                           {typeof row.values[col] === 'number' 

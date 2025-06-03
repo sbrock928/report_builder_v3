@@ -15,6 +15,7 @@ class Calculation(Base):
     description: Mapped[str] = mapped_column(Text, nullable=True)
     formula: Mapped[str] = mapped_column(Text, nullable=False)
     aggregation_method: Mapped[str] = mapped_column(String(50), nullable=False)
+    group_level: Mapped[str] = mapped_column(String(20), nullable=False)  # 'deal' or 'tranche'
     source_tables: Mapped[list] = mapped_column(JSON, nullable=False)  # List of table names
     dependencies: Mapped[list] = mapped_column(JSON, nullable=True, default=[])  # List of calculation names
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -81,3 +82,4 @@ class ReportExecutionLog(Base):
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
     error_message: Mapped[str] = mapped_column(Text, nullable=True)
     executed_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+

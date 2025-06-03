@@ -38,6 +38,7 @@ class CalculationRequest(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     formula: str = Field(..., min_length=1)
     aggregation_method: str = Field(...)
+    group_level: str = Field(..., description="Aggregation level: 'deal', 'tranche', or 'both'")
     source_tables: List[str] = Field(..., min_items=1)
     dependencies: Optional[List[str]] = Field(default_factory=list)
 

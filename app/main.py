@@ -1,12 +1,58 @@
-# app/main.py (Corrected imports)
+# app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
 from app.reporting.routers.report_router import router as report_router
-from app.core.database import create_all_tables, seed_default_calculations, seed_sample_data
 
-app = FastAPI(title="Data Warehouse Reporting API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    # Startup
+    print("Initializing databases...")
+    
+    try:
+        # Import database functions
+        from app.core.database import (
+            create_dw_tables, 
+            create_config_tables, 
+            seed_sample_data, 
+            seed_default_calculations
+        )
+        
+        # Create database tables
+        await create_dw_tables()
+        await create_config_tables()
+        print("✅ Database tables created")
+        
+        # Seed sample data
+        await seed_sample_data()
+        print("✅ Sample data seeded")
+        
+        # Seed default calculations
+        await seed_default_calculations()
+        print("✅ Default calculations seeded")
+        
+        print("🚀 Application startup complete!")
+        
+    except Exception as e:
+        print(f"❌ Error during startup: {e}")
+        raise
+    
+    yield
+    
+    # Shutdown
+    print("Application shutdown")
 
-# CORS middleware for frontend
+# Create FastAPI application
+app = FastAPI(
+    title="Reporting System API",
+    description="API for generating financial reports with configurable calculations",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],  # React dev server
@@ -16,87 +62,23 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(report_router)
+app.include_router(report_router, prefix="/api/reports", tags=["reports"])
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize both SQLite databases on startup"""
-    print("Initializing databases...")
-    
-    # Create all tables
-    create_all_tables()
-    print("✅ Database tables created")
-    
-    # Seed sample data warehouse data
-    seed_sample_data()
-    print("✅ Sample data seeded")
-    
-    # Seed default calculations
-    seed_default_calculations()
-    print("✅ Default calculations seeded")
-    
-    print("🚀 Application startup complete!")
-
-@app.get("/")
-async def root():
-    return {"message": "Data Warehouse Reporting API is running"}
-
+# Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    try:
-        from app.core.database import DWSessionLocal, ConfigSessionLocal
-        
-        # Test DW connection
-        dw_db = DWSessionLocal()
-        dw_db.execute("SELECT 1")
-        dw_db.close()
-        
-        # Test Config connection
-        config_db = ConfigSessionLocal()
-        config_db.execute("SELECT 1")
-        config_db.close()
-        
-        return {
-            "status": "healthy",
-            "databases": {
-                "data_warehouse": "connected",
-                "config": "connected"
-            }
-        }
-    except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+    return {"status": "healthy", "message": "Reporting system is running"}
 
-@app.get("/api/database/stats")
-async def database_stats():
-    """Get database statistics"""
-    from app.core.database import DWSessionLocal, ConfigSessionLocal
-    from app.datawarehouse.models import Deal, Tranche, TrancheBal
-    from app.config.models import Calculation
-    
-    dw_db = DWSessionLocal()
-    config_db = ConfigSessionLocal()
-    
-    try:
-        stats = {
-            "data_warehouse": {
-                "deals": dw_db.query(Deal).count(),
-                "tranches": dw_db.query(Tranche).count(),
-                "tranche_balances": dw_db.query(TrancheBal).count(),
-                "cycles": dw_db.query(TrancheBal.cycle_cde).distinct().count()
-            },
-            "config": {
-                "calculations": config_db.query(Calculation).filter(Calculation.is_active == True).count(),
-                "total_calculations": config_db.query(Calculation).count()
-            }
-        }
-        return stats
-    finally:
-        dw_db.close()
-        config_db.close()
+@app.get("/")
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "message": "Reporting System API",
+        "version": "1.0.0",
+        "docs_url": "/docs",
+        "health_url": "/health"
+    }
 
 if __name__ == "__main__":
     import uvicorn

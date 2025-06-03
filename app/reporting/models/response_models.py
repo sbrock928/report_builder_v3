@@ -10,6 +10,7 @@ class ReportRow(BaseModel):
     """Single row in a report result"""
     dl_nbr: int
     tr_id: Optional[str] = None  # Only present for tranche-level reports
+    cycle_cde: Optional[int] = None  # Cycle code for the data
     values: Dict[str, Any]  # Calculation results keyed by calculation name
 
     class Config:
@@ -17,6 +18,7 @@ class ReportRow(BaseModel):
             "example": {
                 "dl_nbr": 101,
                 "tr_id": "A",
+                "cycle_cde": 202403,
                 "values": {
                     "total_ending_balance": 50000000.00,
                     "total_principal_released": 1500000.00
@@ -46,6 +48,7 @@ class ReportResponse(BaseModel):
                     {
                         "dl_nbr": 101,
                         "tr_id": None,
+                        "cycle_cde": 202403,
                         "values": {
                             "total_ending_balance": 50000000.00,
                             "total_principal_released": 1500000.00
@@ -62,6 +65,7 @@ class CalculationResponse(BaseModel):
     description: Optional[str] = None
     formula: str
     aggregation_method: str
+    group_level: str
     source_tables: List[str]
     dependencies: List[str]
     created_at: Optional[datetime] = None

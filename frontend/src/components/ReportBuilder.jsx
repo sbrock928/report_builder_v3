@@ -106,7 +106,7 @@ const ReportBuilder = () => {
 
   const fetchFilteredCalculations = async () => {
     try {
-      const response = await fetch(`/api/reports/calculations?group_level=${reportData.aggregation_level}`);
+      const response = await fetch(`/api/calculations?group_level=${reportData.aggregation_level}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch calculations');

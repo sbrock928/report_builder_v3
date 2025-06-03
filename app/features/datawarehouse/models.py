@@ -1,4 +1,5 @@
-"""Database models for the datawarehouse module (data warehouse database)."""
+# app/features/datawarehouse/models.py
+"""Database models for the datawarehouse feature (data warehouse database)."""
 
 from sqlalchemy import (
     Column, Integer, String, Float, SmallInteger, ForeignKey, CHAR, and_, Numeric

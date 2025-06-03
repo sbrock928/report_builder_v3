@@ -81,7 +81,7 @@ const CalculationBuilder = () => {
 
   const fetchCalculations = async () => {
     try {
-      const response = await fetch('/api/reports/calculations');
+      const response = await fetch('/api/calculations');
       const data = await response.json();
       setCalculations(data);
     } catch (error) {
@@ -151,7 +151,7 @@ const CalculationBuilder = () => {
         source_tables: sourceTables
       };
 
-      const response = await fetch('/api/reports/calculations/preview-sql', {
+      const response = await fetch('/api/calculations/preview-sql', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,7 +183,7 @@ const CalculationBuilder = () => {
       const sqlData = {};
       
       for (const level of levels) {
-        const response = await fetch(`/api/reports/calculations/${calcName}/preview-sql?aggregation_level=${level}`);
+        const response = await fetch(`/api/calculations/${calcName}/preview-sql?aggregation_level=${level}`);
         if (response.ok) {
           const data = await response.json();
           sqlData[level] = data;
@@ -237,8 +237,8 @@ const CalculationBuilder = () => {
 
     try {
       const url = editingCalculation 
-        ? `/api/reports/calculations/${editingCalculation.name}`
-        : '/api/reports/calculations';
+        ? `/api/calculations/${editingCalculation.name}`
+        : '/api/calculations';
       
       const method = editingCalculation ? 'PUT' : 'POST';
       
@@ -279,7 +279,7 @@ const CalculationBuilder = () => {
     }
 
     try {
-      const response = await fetch(`/api/reports/calculations/${calcName}`, {
+      const response = await fetch(`/api/calculations/${calcName}`, {
         method: 'DELETE',
       });
 

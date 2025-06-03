@@ -1,4 +1,6 @@
 # app/core/database.py
+"""Database configuration and setup with feature-based imports"""
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from typing import Generator
@@ -41,17 +43,24 @@ def get_config_session() -> Generator[Session, None, None]:
 
 async def create_dw_tables():
     """Create data warehouse database tables"""
+    # Import models to register them with the base
+    from app.features.datawarehouse.models import Deal, Tranche, TrancheBal
+    
     engine = create_dw_engine()
     DWBase.metadata.create_all(bind=engine)
 
 async def create_config_tables():
     """Create config database tables"""
+    # Import models to register them with the base
+    from app.features.calculations.models import Calculation
+    from app.features.reports.models import ReportTemplate, ReportCalculation, ReportExecutionLog
+    
     engine = create_config_engine()
     ConfigBase.metadata.create_all(bind=engine)
 
 async def seed_sample_data():
     """Seed sample data into data warehouse"""
-    from app.datawarehouse.models import Deal, Tranche, TrancheBal
+    from app.features.datawarehouse.models import Deal, Tranche, TrancheBal
     import random
     from decimal import Decimal
     
@@ -192,7 +201,7 @@ async def seed_sample_data():
 
 async def seed_default_calculations():
     """Seed default calculations into config database"""
-    from app.config.models import Calculation
+    from app.features.calculations.models import Calculation
     
     config_db = ConfigSessionLocal()
     try:

@@ -1,9 +1,14 @@
 # app/main.py
+"""Main FastAPI application with feature-based routing"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.reporting.routers.report_router import router as report_router
+# Import feature routers
+from app.features.reports.router import router as reports_router
+from app.features.calculations.router import router as calculations_router
+from app.features.datawarehouse.router import router as datawarehouse_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,8 +66,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(report_router, prefix="/api/reports", tags=["reports"])
+# Include feature routers
+app.include_router(reports_router, prefix="/api/reports", tags=["reports"])
+app.include_router(calculations_router, prefix="/api/calculations", tags=["calculations"])
+app.include_router(datawarehouse_router, prefix="/api/reports", tags=["datawarehouse"])
 
 # Health check endpoint
 @app.get("/health")
@@ -77,7 +84,12 @@ async def root():
         "message": "Reporting System API",
         "version": "1.0.0",
         "docs_url": "/docs",
-        "health_url": "/health"
+        "health_url": "/health",
+        "features": [
+            "reports", 
+            "calculations", 
+            "datawarehouse"
+        ]
     }
 
 if __name__ == "__main__":

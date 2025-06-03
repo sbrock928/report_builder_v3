@@ -8,6 +8,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+*.pyo
+*.pyd
 
 # C extensions
 *.so
@@ -207,8 +210,9 @@ build/
 *.db
 *.sqlite
 *.sqlite3
-data_warehouse.db
-config.db
+# Force include our application databases
+!data_warehouse.db
+!config.db
 
 # Database backups
 *.bak
@@ -419,3 +423,5 @@ docker-compose.override.yml
 # ======================
 # End of .gitignore
 # ======================
+config.db
+data_warehouse.db

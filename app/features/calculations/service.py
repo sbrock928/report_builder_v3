@@ -22,7 +22,7 @@ class CalculationService:
         group_level_enum = GroupLevel(group_level) if group_level else None
         calculations = self.repository.get_all_calculations(group_level_enum)
         
-        return [CalculationResponse.from_orm(calc) for calc in calculations]
+        return [CalculationResponse.model_validate(calc) for calc in calculations]
     
     async def preview_calculation_sql(
         self,
@@ -42,7 +42,7 @@ class CalculationService:
         
         return self.query_engine.preview_calculation_sql(
             calculation=calculation,
-            aggregation_level=aggregation_level,
+            aggregation_level=calculation.group_level,
             sample_deals=sample_deals,
             sample_tranches=sample_tranches,
             sample_cycle=sample_cycle
@@ -72,7 +72,7 @@ class CalculationService:
         )
         
         calculation = self.repository.create(calculation)
-        return CalculationResponse.from_orm(calculation)
+        return CalculationResponse.model_validate(calculation)
     
     async def update_calculation(self, calc_id: int, request: CalculationCreateRequest) -> CalculationResponse:
         """Update an existing calculation"""
@@ -93,7 +93,7 @@ class CalculationService:
         calculation.weight_field = request.weight_field
         
         calculation = self.repository.update(calculation)
-        return CalculationResponse.from_orm(calculation)
+        return CalculationResponse.model_validate(calculation)
     
     async def delete_calculation(self, calc_id: int) -> dict:
         """Delete a calculation (soft delete)"""

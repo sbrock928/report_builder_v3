@@ -99,7 +99,7 @@ const CalculationBuilder = () => {
     setShowPreviewModal(true);
     
     try {
-      const response = await fetch(`/api/calculations/${calcId}/preview-sql?aggregation_level=deal&sample_deals=101,102,103&sample_tranches=A,B&sample_cycle=202404`);
+      const response = await fetch(`/api/calculations/${calcId}/preview-sql?group_level=deal&sample_deals=101,102,103&sample_tranches=A,B&sample_cycle=202404`);
       
       if (!response.ok) {
         const errorData = await response.json();

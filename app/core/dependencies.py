@@ -1,6 +1,7 @@
 # app/core/dependencies.py
 """Dependency injection helpers for FastAPI"""
 
+from fastapi import Depends
 from sqlalchemy.orm import Session
 from typing import Generator
 from .database import get_dw_session, get_config_session
@@ -21,8 +22,8 @@ class DatabaseSessions:
         self.config_db = config_db
 
 def get_database_sessions(
-    dw_db: Session = get_dw_db(),
-    config_db: Session = get_config_db()
+    dw_db: Session = Depends(get_dw_db),
+    config_db: Session = Depends(get_config_db)
 ) -> DatabaseSessions:
     """Get both database sessions for services that need access to both"""
     return DatabaseSessions(dw_db, config_db)

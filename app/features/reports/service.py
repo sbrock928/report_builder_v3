@@ -11,6 +11,7 @@ from app.core.exceptions import ReportGenerationError
 from app.features.calculations.service import CalculationNotFoundError
 from app.features.datawarehouse.models import Deal, Tranche, TrancheBal
 from app.features.calculations.models import Calculation, SourceModel, AggregationFunction
+from app.shared.sql_preview_service import SqlPreviewService
 from .models import Report, ReportDeal, ReportTranche, ReportCalculation, ReportExecutionLog
 from .schemas import (
     ReportCreateRequest, ReportUpdateRequest, ReportExecuteRequest,
@@ -25,6 +26,8 @@ class ReportService:
         self.dw_db = dw_db
         self.config_db = config_db
         self.repository = ReportRepository(config_db)
+        # Initialize shared SQL preview service
+        self.sql_preview_service = SqlPreviewService(dw_db, config_db)
     
     async def create_report_template(self, request: ReportCreateRequest, user_id: str = "api_user") -> ReportTemplateDetailResponse:
         """Create a new report template (no cycle_code stored)"""
@@ -317,107 +320,53 @@ class ReportService:
             
             raise ReportGenerationError(f"Report execution failed: {str(e)}")
     
-    def _build_consolidated_query(self, deal_numbers: List[int], tranche_ids: List[str], cycle_code: int, calculations: List[Calculation], aggregation_level: str):
-        """Build the consolidated ORM query used by both preview and execution"""
-        from sqlalchemy import and_
+    async def preview_report_sql(self, report_id: int, cycle_code: int) -> Dict[str, Any]:
+        """Preview SQL that would be generated for this report template using the shared ORM logic"""
+        # Load report template
+        report = self.config_db.query(Report).filter(
+            Report.id == report_id,
+            Report.is_active == True
+        ).first()
         
-        # Start with the base query structure
-        if aggregation_level == "tranche":
-            base_query = self.dw_db.query(
-                Deal.dl_nbr.label('deal_number'),
-                Tranche.tr_id.label('tranche_id'),
-                TrancheBal.cycle_cde.label('cycle_code')
-            )
-        else:
-            base_query = self.dw_db.query(
-                Deal.dl_nbr.label('deal_number'),
-                TrancheBal.cycle_cde.label('cycle_code')
-            )
+        if not report:
+            raise ReportGenerationError(f"Report template {report_id} not found")
         
-        base_query = base_query.select_from(Deal)\
-            .join(Tranche, Deal.dl_nbr == Tranche.dl_nbr)\
-            .join(TrancheBal, and_(
-                Tranche.dl_nbr == TrancheBal.dl_nbr,
-                Tranche.tr_id == TrancheBal.tr_id
-            ))
+        # Get report configuration
+        deal_numbers = [rd.deal_number for rd in report.report_deals]
+        tranche_ids = list(set(rt.tranche_id for rt in report.report_tranches))
         
-        # Add each calculation as a column using subquery approach
-        for calc in calculations:
-            # Create subquery for this calculation
-            if aggregation_level == "tranche":
-                calc_subquery = self.dw_db.query(
-                    Deal.dl_nbr.label('calc_deal_nbr'),
-                    Tranche.tr_id.label('calc_tranche_id'),
-                    calc.get_sqlalchemy_function().label(f'{calc.name.lower().replace(" ", "_").replace("-", "_")}')
-                )
-            else:
-                calc_subquery = self.dw_db.query(
-                    Deal.dl_nbr.label('calc_deal_nbr'),
-                    calc.get_sqlalchemy_function().label(f'{calc.name.lower().replace(" ", "_").replace("-", "_")}')
-                )
-            
-            calc_subquery = calc_subquery.select_from(Deal)
-            
-            # Add required joins based on calculation's source model
-            required_models = calc.get_required_models()
-            
-            if Tranche in required_models:
-                calc_subquery = calc_subquery.join(Tranche, Deal.dl_nbr == Tranche.dl_nbr)
-            
-            if TrancheBal in required_models:
-                calc_subquery = calc_subquery.join(TrancheBal, and_(
-                    Tranche.dl_nbr == TrancheBal.dl_nbr,
-                    Tranche.tr_id == TrancheBal.tr_id
-                ))
-            
-            # Apply filters and group by
-            calc_subquery = calc_subquery.filter(Deal.dl_nbr.in_(deal_numbers))\
-                .filter(Tranche.tr_id.in_(tranche_ids))\
-                .filter(TrancheBal.cycle_cde == cycle_code)
-            
-            if aggregation_level == "tranche":
-                calc_subquery = calc_subquery.group_by(Deal.dl_nbr, Tranche.tr_id)
-            else:
-                calc_subquery = calc_subquery.group_by(Deal.dl_nbr)
-            
-            calc_subquery = calc_subquery.subquery()
-            
-            # LEFT JOIN this calculation to the base query
-            if aggregation_level == "tranche":
-                base_query = base_query.outerjoin(
-                    calc_subquery, 
-                    and_(
-                        Deal.dl_nbr == calc_subquery.c.calc_deal_nbr,
-                        Tranche.tr_id == calc_subquery.c.calc_tranche_id
-                    )
-                )
-            else:
-                base_query = base_query.outerjoin(
-                    calc_subquery, 
-                    Deal.dl_nbr == calc_subquery.c.calc_deal_nbr
-                )
-            
-            # Add the calculation column
-            column_name = f'{calc.name.lower().replace(" ", "_").replace("-", "_")}'
-            base_query = base_query.add_columns(calc_subquery.c[column_name].label(calc.name))
+        # Load calculations ordered by display_order
+        report_calculations = self.config_db.query(ReportCalculation).filter(
+            ReportCalculation.report_id == report_id
+        ).order_by(ReportCalculation.display_order).all()
         
-        # Apply base filters and group by
-        final_query = base_query.filter(Deal.dl_nbr.in_(deal_numbers))\
-            .filter(Tranche.tr_id.in_(tranche_ids))\
-            .filter(TrancheBal.cycle_cde == cycle_code)
+        calculations = []
+        for rc in report_calculations:
+            calc = self.config_db.query(Calculation).filter(Calculation.id == rc.calculation_id).first()
+            if calc:
+                calculations.append(calc)
         
-        if aggregation_level == "tranche":
-            final_query = final_query.group_by(Deal.dl_nbr, Tranche.tr_id, TrancheBal.cycle_cde)
-        else:
-            final_query = final_query.group_by(Deal.dl_nbr, TrancheBal.cycle_cde)
-        
-        return final_query.distinct()
-    
+        # Use the shared preview service (same ORM logic as execution and calculation previews)
+        return self.sql_preview_service.preview_report_sql(
+            report_name=report.name,
+            aggregation_level=report.aggregation_level,
+            deal_numbers=deal_numbers,
+            tranche_ids=tranche_ids,
+            cycle_code=cycle_code,
+            calculations=calculations
+        )
+
     def _execute_consolidated_deal_level_report(self, deal_numbers: List[int], tranche_ids: List[str], cycle_code: int, calculations: List[Calculation]) -> List[ReportRow]:
-        """Execute deal-level report using consolidated ORM query"""
+        """Execute deal-level report using shared consolidated ORM query"""
         
-        # Build and execute the consolidated query
-        query = self._build_consolidated_query(deal_numbers, tranche_ids, cycle_code, calculations, "deal")
+        # Build and execute the consolidated query using the shared service
+        query = self.sql_preview_service.build_consolidated_query(
+            deal_numbers=deal_numbers, 
+            tranche_ids=tranche_ids, 
+            cycle_code=cycle_code, 
+            calculations=calculations, 
+            aggregation_level="deal"
+        )
         results = query.all()
         
         # Convert results to ReportRow format
@@ -442,10 +391,16 @@ class ReportService:
         return data
     
     def _execute_consolidated_tranche_level_report(self, deal_numbers: List[int], tranche_ids: List[str], cycle_code: int, calculations: List[Calculation]) -> List[ReportRow]:
-        """Execute tranche-level report using consolidated ORM query"""
+        """Execute tranche-level report using shared consolidated ORM query"""
         
-        # Build and execute the consolidated query
-        query = self._build_consolidated_query(deal_numbers, tranche_ids, cycle_code, calculations, "tranche")
+        # Build and execute the consolidated query using the shared service
+        query = self.sql_preview_service.build_consolidated_query(
+            deal_numbers=deal_numbers, 
+            tranche_ids=tranche_ids, 
+            cycle_code=cycle_code, 
+            calculations=calculations, 
+            aggregation_level="tranche"
+        )
         results = query.all()
         
         # Convert results to ReportRow format
@@ -529,83 +484,6 @@ class ReportService:
         
         self.repository.soft_delete(calculation)
         return {"message": f"Calculation '{calculation.name}' deleted successfully"}
-    
-    async def preview_report_sql(self, report_id: int, cycle_code: int, use_simple_query: bool = False) -> Dict[str, Any]:
-        """Preview SQL that would be generated for this report template using the same consolidated query as execution"""
-        # Load report template
-        report = self.config_db.query(Report).filter(
-            Report.id == report_id,
-            Report.is_active == True
-        ).first()
-        
-        if not report:
-            raise ReportGenerationError(f"Report template {report_id} not found")
-        
-        # Get report configuration
-        deal_numbers = [rd.deal_number for rd in report.report_deals]
-        tranche_ids = list(set(rt.tranche_id for rt in report.report_tranches))
-        
-        # Load calculations ordered by display_order
-        report_calculations = self.config_db.query(ReportCalculation).filter(
-            ReportCalculation.report_id == report_id
-        ).order_by(ReportCalculation.display_order).all()
-        
-        calculations = []
-        calc_details = []
-        for rc in report_calculations:
-            calc = self.config_db.query(Calculation).filter(Calculation.id == rc.calculation_id).first()
-            if calc:
-                calculations.append(calc)
-                # Store calculation details for response
-                calc_details.append({
-                    'name': calc.name,
-                    'aggregation_function': calc.aggregation_function.value,
-                    'source_model': calc.source_model.value,
-                    'source_field': calc.source_field,
-                    'weight_field': calc.weight_field,
-                    'group_level': calc.group_level.value
-                })
-        
-        # Generate the exact same query that execution uses
-        query = self._build_consolidated_query(deal_numbers, tranche_ids, cycle_code, calculations, report.aggregation_level)
-        
-        # Compile to SQL
-        compiled_sql = str(query.statement.compile(
-            dialect=self.dw_db.bind.dialect, 
-            compile_kwargs={"literal_binds": True}
-        ))
-        
-        # Estimate complexity and rows
-        query_complexity = "Medium"
-        if len(calculations) > 5 or len(deal_numbers) > 20:
-            query_complexity = "High"
-        elif len(calculations) <= 2 and len(deal_numbers) <= 5:
-            query_complexity = "Low"
-        
-        estimated_rows = len(deal_numbers) if report.aggregation_level == "deal" else len(deal_numbers) * len(tranche_ids)
-        
-        return {
-            "template_name": report.name,
-            "aggregation_level": report.aggregation_level,
-            "sample_cycle": cycle_code,
-            "deal_count": len(deal_numbers),
-            "tranche_count": len(tranche_ids),
-            "calculation_count": len(calculations),
-            "sql_query": f"""-- CONSOLIDATED REPORT QUERY (Used by both preview and execution):
-{compiled_sql}
-
--- This is the exact same query that will be executed when running this report.
--- All calculations are retrieved in a single database round-trip using LEFT JOINs.
--- Query executes {len(calculations)} calculation subqueries joined to the base result set.""",
-            "parameters": {
-                "cycle_code": cycle_code,
-                "deal_numbers": deal_numbers,
-                "tranche_ids": tranche_ids
-            },
-            "selected_calculations": calc_details,
-            "query_complexity": query_complexity,
-            "estimated_rows": estimated_rows
-        }
     
     async def delete_report_template(self, report_id: int) -> dict:
         """Delete a report template (soft delete)"""

@@ -4,7 +4,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 from typing import Any, Dict, List, Optional
-from app.core.dependencies import get_config_db
+from app.core.dependencies import get_config_db, get_database_sessions, DatabaseSessions
 from app.core.exceptions import CalculationNotFoundError, CalculationAlreadyExistsError, InvalidCalculationError
 from .service import CalculationService
 from .schemas import CalculationCreateRequest, CalculationResponse
@@ -12,8 +12,12 @@ from .schemas import CalculationCreateRequest, CalculationResponse
 router = APIRouter()
 
 def get_calculation_service(db: Session = Depends(get_config_db)) -> CalculationService:
-    """Get calculation service with database session"""
+    """Get calculation service with config database session only"""
     return CalculationService(db)
+
+def get_calculation_service_with_preview(sessions: DatabaseSessions = Depends(get_database_sessions)) -> CalculationService:
+    """Get calculation service with both database sessions for SQL preview functionality"""
+    return CalculationService(sessions.config_db, sessions.dw_db)
 
 @router.get("", response_model=List[CalculationResponse])
 async def get_available_calculations(
@@ -37,13 +41,13 @@ async def create_calculation(
 @router.get("/{calc_id}/preview-sql")
 async def preview_calculation_sql(
     calc_id: int,
-    service: CalculationService = Depends(get_calculation_service),
+    service: CalculationService = Depends(get_calculation_service_with_preview),
     aggregation_level: str = Query("deal", description="Aggregation level: 'deal' or 'tranche'"),
     sample_deals: str = Query("101,102,103", description="Comma-separated sample deal numbers"),
     sample_tranches: str = Query("A,B", description="Comma-separated sample tranche IDs"),
     sample_cycle: int = Query(202404, description="Sample cycle code")
 ):
-    """Preview the SQL that would be generated for this calculation"""
+    """Preview the SQL that would be generated for this calculation using the same ORM logic as reports"""
     try:
         # Parse comma-separated values
         deal_list = [int(d.strip()) for d in sample_deals.split(',') if d.strip()]
@@ -54,6 +58,8 @@ async def preview_calculation_sql(
         )
     except CalculationNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.put("/{calc_id}", response_model=CalculationResponse)
 async def update_calculation(

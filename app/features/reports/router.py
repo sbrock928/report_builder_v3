@@ -54,12 +54,11 @@ async def get_report_template_detail(
 async def preview_report_sql(
     report_id: int,
     service: ReportService = Depends(get_report_service),
-    cycle_code: int = Query(202404, description="Sample cycle code"),
-    use_simple_query: bool = Query(False, description="Use simple aggregation query instead of subqueries")
+    cycle_code: int = Query(202404, description="Sample cycle code for SQL preview")
 ):
-    """Preview the SQL that would be generated for this report template"""
+    """Preview the SQL that would be generated for this report template using the same ORM logic as execution"""
     try:
-        return await service.preview_report_sql(report_id, cycle_code, use_simple_query)
+        return await service.preview_report_sql(report_id, cycle_code)
     except ReportGenerationError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

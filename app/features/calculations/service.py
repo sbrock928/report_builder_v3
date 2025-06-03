@@ -4,6 +4,7 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any, Tuple
 from app.core.exceptions import CalculationNotFoundError, CalculationAlreadyExistsError, InvalidCalculationError
+from app.shared.sql_preview_service import SqlPreviewService
 from .repository import CalculationRepository
 from .models import Calculation, AggregationFunction, SourceModel, GroupLevel
 from .schemas import CalculationCreateRequest, CalculationResponse
@@ -11,9 +12,13 @@ from .schemas import CalculationCreateRequest, CalculationResponse
 class CalculationService:
     """Service for calculation business logic"""
     
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, dw_db: Session = None):
         self.db = db
+        self.dw_db = dw_db
         self.repository = CalculationRepository(db)
+        # Initialize shared SQL preview service if data warehouse DB is provided
+        if dw_db:
+            self.sql_preview_service = SqlPreviewService(dw_db, db)
     
     async def get_available_calculations(self, group_level: Optional[str] = None) -> List[CalculationResponse]:
         """Get list of available calculations, optionally filtered by group level"""
@@ -33,7 +38,7 @@ class CalculationService:
         sample_tranches: List[str] = None,
         sample_cycle: int = None
     ) -> Dict[str, Any]:
-        """Generate SQL preview for an existing calculation"""
+        """Generate SQL preview for an existing calculation using shared ORM logic"""
         calculation = self.db.query(Calculation).filter(
             Calculation.id == calc_id,
             Calculation.is_active == True
@@ -42,42 +47,17 @@ class CalculationService:
         if not calculation:
             raise CalculationNotFoundError(f"Calculation with ID {calc_id} not found")
         
-        # Convert ORM calculation to dictionary format for query builder
-        calc_dict = {
-            'name': calculation.name,
-            'formula': self._build_formula_from_calculation(calculation),
-            'source_tables': self._get_source_tables_from_calculation(calculation),
-            'group_level': calculation.group_level.value
-        }
+        if not self.sql_preview_service:
+            raise ValueError("Data warehouse database session required for SQL preview")
         
-        # Use query builder to generate preview
-        from app.features.reports.builders import FilterBuilder, ReportQueryBuilder
-        filter_builder = FilterBuilder()
-        query_builder = ReportQueryBuilder(filter_builder)
-        
-        query, params = query_builder.preview_calculation_subquery(
-            calc_dict, aggregation_level, sample_deals, sample_tranches, sample_cycle
+        # Use the shared preview service that uses the same ORM logic as report execution
+        return self.sql_preview_service.preview_calculation_sql(
+            calculation=calculation,
+            aggregation_level=aggregation_level,
+            sample_deals=sample_deals,
+            sample_tranches=sample_tranches,
+            sample_cycle=sample_cycle
         )
-        
-        return {
-            "calculation_name": calculation.name,
-            "description": calculation.description,
-            "aggregation_level": aggregation_level,
-            "sample_parameters": {
-                "deals": sample_deals or [101, 102, 103],
-                "tranches": sample_tranches or ["A", "B"],
-                "cycle": sample_cycle or 202404
-            },
-            "generated_sql": query,
-            "sql_parameters": params,
-            "calculation_config": {
-                "aggregation_function": calculation.aggregation_function.value,
-                "source_model": calculation.source_model.value,
-                "source_field": calculation.source_field,
-                "group_level": calculation.group_level.value,
-                "weight_field": calculation.weight_field
-            }
-        }
 
     def _build_formula_from_calculation(self, calculation: Calculation) -> str:
         """Build SQL formula from ORM calculation definition"""

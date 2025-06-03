@@ -50,6 +50,19 @@ async def get_report_template_detail(
     except ReportGenerationError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+@router.get("/templates/{report_id}/preview-sql")
+async def preview_report_sql(
+    report_id: int,
+    service: ReportService = Depends(get_report_service),
+    cycle_code: int = Query(202404, description="Sample cycle code"),
+    use_simple_query: bool = Query(False, description="Use simple aggregation query instead of subqueries")
+):
+    """Preview the SQL that would be generated for this report template"""
+    try:
+        return await service.preview_report_sql(report_id, cycle_code, use_simple_query)
+    except ReportGenerationError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 @router.put("/templates/{report_id}", response_model=ReportTemplateDetailResponse)
 async def update_report_template(
     report_id: int,

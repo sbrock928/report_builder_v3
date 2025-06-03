@@ -1,6 +1,5 @@
 # app/features/reports/builders/subquery_builder.py
 from typing import Dict, Any
-from app.features.calculations.schemas import CalculationRequest
 
 class SubqueryBuilder:
     """Builds filtered subqueries for individual calculations using actual DW models"""

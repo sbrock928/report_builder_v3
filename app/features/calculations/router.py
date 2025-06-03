@@ -3,7 +3,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from app.core.dependencies import get_config_db
 from app.core.exceptions import CalculationNotFoundError, CalculationAlreadyExistsError, InvalidCalculationError
 from .service import CalculationService
@@ -33,6 +33,27 @@ async def create_calculation(
         return await service.create_calculation(request)
     except (CalculationAlreadyExistsError, InvalidCalculationError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{calc_id}/preview-sql")
+async def preview_calculation_sql(
+    calc_id: int,
+    service: CalculationService = Depends(get_calculation_service),
+    aggregation_level: str = Query("deal", description="Aggregation level: 'deal' or 'tranche'"),
+    sample_deals: str = Query("101,102,103", description="Comma-separated sample deal numbers"),
+    sample_tranches: str = Query("A,B", description="Comma-separated sample tranche IDs"),
+    sample_cycle: int = Query(202404, description="Sample cycle code")
+):
+    """Preview the SQL that would be generated for this calculation"""
+    try:
+        # Parse comma-separated values
+        deal_list = [int(d.strip()) for d in sample_deals.split(',') if d.strip()]
+        tranche_list = [t.strip() for t in sample_tranches.split(',') if t.strip()]
+        
+        return await service.preview_calculation_sql(
+            calc_id, aggregation_level, deal_list, tranche_list, sample_cycle
+        )
+    except CalculationNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 @router.put("/{calc_id}", response_model=CalculationResponse)
 async def update_calculation(

@@ -1,66 +1,73 @@
 // frontend/src/components/CalculationBuilder.jsx
 import React, { useState, useEffect } from 'react';
-import { Plus, Save, Trash2, Edit3, Calculator, Database } from 'lucide-react';
+import { Plus, Save, Trash2, Edit3, Calculator, Database, Eye, X } from 'lucide-react';
+import { useNotification } from './NotificationSystem';
 
 const CalculationBuilder = () => {
   const [calculations, setCalculations] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editingCalculation, setEditingCalculation] = useState(null);
   const [error, setError] = useState(null);
-  
-  const [formData, setFormData] = useState({
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [calculation, setCalculation] = useState({
     name: '',
-    description: '',
-    aggregation_function: 'SUM',
-    source_model: 'TrancheBal',
-    source_field: '',
-    group_level: 'deal',
-    weight_field: ''
+    function_type: 'sum',
+    source: '',
+    level: 'deal',
+    weight_field: '',
+    description: ''
   });
-
+  const { success, error: showError } = useNotification();
+  
   // Available options for the ORM-based system
   const aggregationFunctions = [
     { value: 'SUM', label: 'SUM - Total amount', description: 'Add all values together' },
     { value: 'AVG', label: 'AVG - Average', description: 'Calculate average value' },
-    { value: 'COUNT', label: 'COUNT - Count', description: 'Count number of records' },
-    { value: 'MIN', label: 'MIN - Minimum', description: 'Find smallest value' },
-    { value: 'MAX', label: 'MAX - Maximum', description: 'Find largest value' },
-    { value: 'WEIGHTED_AVG', label: 'WEIGHTED_AVG - Weighted Average', description: 'Balance-weighted average' }
+    { value: 'COUNT', label: 'COUNT - Count records', description: 'Count number of records' },
+    { value: 'MIN', label: 'MIN - Minimum value', description: 'Find minimum value' },
+    { value: 'MAX', label: 'MAX - Maximum value', description: 'Find maximum value' },
+    { value: 'WEIGHTED_AVG', label: 'WEIGHTED_AVG - Weighted average', description: 'Calculate weighted average using specified weight field' }
   ];
 
   const sourceModels = [
-    { value: 'Deal', label: 'Deal', description: 'Deal-level information' },
-    { value: 'Tranche', label: 'Tranche', description: 'Tranche-level information' },
-    { value: 'TrancheBal', label: 'TrancheBal', description: 'Financial data and balances' }
+    { value: 'Deal', label: 'Deal', description: 'Base deal information' },
+    { value: 'Tranche', label: 'Tranche', description: 'Tranche structure data' },
+    { value: 'TrancheBal', label: 'TrancheBal', description: 'Tranche balance and performance data' }
   ];
 
   const groupLevels = [
-    { value: 'deal', label: 'Deal Level', description: 'Aggregated at deal level' },
-    { value: 'tranche', label: 'Tranche Level', description: 'Aggregated at tranche level' }
+    { value: 'deal', label: 'Deal Level', description: 'Aggregate to deal level' },
+    { value: 'tranche', label: 'Tranche Level', description: 'Aggregate to tranche level' }
   ];
 
-  // Available fields by source model
-  const availableFields = {
-    Deal: [
-      { value: 'dl_nbr', label: 'Deal Number', type: 'number' },
-      { value: 'issr_cde', label: 'Issuer Code', type: 'text' },
-      { value: 'cdi_file_nme', label: 'CDI File Name', type: 'text' }
-    ],
-    Tranche: [
-      { value: 'tr_id', label: 'Tranche ID', type: 'text' },
-      { value: 'tr_cusip_id', label: 'CUSIP ID', type: 'text' }
-    ],
-    TrancheBal: [
-      { value: 'tr_end_bal_amt', label: 'Ending Balance Amount', type: 'currency' },
-      { value: 'tr_prin_rel_ls_amt', label: 'Principal Release Loss Amount', type: 'currency' },
-      { value: 'tr_pass_thru_rte', label: 'Pass Through Rate', type: 'percentage' },
-      { value: 'tr_accrl_days', label: 'Accrual Days', type: 'number' },
-      { value: 'tr_int_dstrb_amt', label: 'Interest Distribution Amount', type: 'currency' },
-      { value: 'tr_prin_dstrb_amt', label: 'Principal Distribution Amount', type: 'currency' },
-      { value: 'tr_int_accrl_amt', label: 'Interest Accrual Amount', type: 'currency' },
-      { value: 'tr_int_shtfl_amt', label: 'Interest Shortfall Amount', type: 'currency' },
-      { value: 'cycle_cde', label: 'Cycle Code', type: 'number' }
-    ]
+  // Field mappings for each source model
+  const getAvailableFields = (sourceModel) => {
+    const fieldMappings = {
+      'Deal': [
+        { value: 'dl_nbr', label: 'Deal Number', type: 'number' }
+      ],
+      'Tranche': [
+        { value: 'tr_id', label: 'Tranche ID', type: 'string' },
+        { value: 'dl_nbr', label: 'Deal Number', type: 'number' }
+      ],
+      'TrancheBal': [
+        { value: 'tr_end_bal_amt', label: 'Ending Balance Amount', type: 'currency' },
+        { value: 'tr_beg_bal_amt', label: 'Beginning Balance Amount', type: 'currency' },
+        { value: 'tr_pass_thru_rte', label: 'Pass Through Rate', type: 'percentage' },
+        { value: 'tr_accrl_days', label: 'Accrual Days', type: 'number' },
+        { value: 'tr_int_dstrb_amt', label: 'Interest Distribution Amount', type: 'currency' },
+        { value: 'tr_prin_dstrb_amt', label: 'Principal Distribution Amount', type: 'currency' },
+        { value: 'tr_int_accrl_amt', label: 'Interest Accrual Amount', type: 'currency' },
+        { value: 'tr_int_shtfl_amt', label: 'Interest Shortfall Amount', type: 'currency' },
+        { value: 'cycle_cde', label: 'Cycle Code', type: 'number' }
+      ]
+    };
+    
+    return fieldMappings[sourceModel] || [];
   };
 
   useEffect(() => {
@@ -68,93 +75,123 @@ const CalculationBuilder = () => {
   }, []);
 
   const fetchCalculations = async () => {
+    setIsLoading(true);
     try {
-      const response = await fetch('/api/calculations');
-      if (response.ok) {
-        const data = await response.json();
-        setCalculations(data);
-      } else {
-        setError('Failed to fetch calculations');
+      const response = await fetch('http://localhost:8000/api/calculations/');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch calculations');
       }
+
+      const data = await response.json();
+      setCalculations(data);
     } catch (error) {
       console.error('Error fetching calculations:', error);
-      setError('Error fetching calculations');
+      showError('Error loading calculations. Please refresh the page.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSubmit = async () => {
-    setError(null);
+  const handlePreviewSQL = async (calcId) => {
+    setPreviewLoading(true);
+    setPreviewData(null);
+    setShowPreviewModal(true);
     
-    // Validation
-    if (!formData.name || !formData.source_field) {
-      setError('Please fill in all required fields');
-      return;
-    }
-
-    if (formData.aggregation_function === 'WEIGHTED_AVG' && !formData.weight_field) {
-      setError('Weighted average calculations require a weight field');
-      return;
-    }
-
     try {
-      const url = editingCalculation 
-        ? `/api/calculations/${editingCalculation.id}`
-        : '/api/calculations';
+      const response = await fetch(`http://localhost:8000/api/calculations/${calcId}/preview-sql?aggregation_level=deal&sample_deals=101,102,103&sample_tranches=A,B&sample_cycle=202404`);
       
-      const method = editingCalculation ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to generate SQL preview');
+      }
+
+      const data = await response.json();
+      setPreviewData(data);
+    } catch (error) {
+      console.error('Error generating SQL preview:', error);
+      showError(`Error generating SQL preview: ${error.message}`);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleSaveCalculation = async () => {
+    if (!calculation.name || !calculation.function_type || !calculation.source) {
+      showError('Please fill in all required fields (Name, Function Type, Source)');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/calculations/', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(calculation),
       });
 
-      if (response.ok) {
-        await fetchCalculations();
-        handleCancel();
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        setError(errorData.detail || 'Error saving calculation');
+        throw new Error(errorData.detail || 'Failed to save calculation');
       }
+
+      const savedCalculation = await response.json();
+      success(`Calculation "${savedCalculation.name}" saved successfully!`);
+      
+      // Reset form
+      setCalculation({
+        name: '',
+        function_type: 'sum',
+        source: '',
+        level: 'deal',
+        weight_field: '',
+        description: ''
+      });
+      
+      // Refresh calculations list
+      fetchCalculations();
     } catch (error) {
       console.error('Error saving calculation:', error);
-      setError('Error saving calculation');
+      showError(`Error saving calculation: ${error.message}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleDelete = async (calcId) => {
-    if (!confirm('Are you sure you want to delete this calculation? This action cannot be undone.')) {
+  const handleDeleteCalculation = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) {
       return;
     }
 
     try {
-      const response = await fetch(`/api/calculations/${calcId}`, {
+      const response = await fetch(`http://localhost:8000/api/calculations/${id}`, {
         method: 'DELETE',
       });
 
-      if (response.ok) {
-        await fetchCalculations();
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        setError(errorData.detail || 'Error deleting calculation');
+        throw new Error(errorData.detail || 'Failed to delete calculation');
       }
+
+      success(`Calculation "${name}" deleted successfully!`);
+      fetchCalculations();
     } catch (error) {
       console.error('Error deleting calculation:', error);
-      setError('Error deleting calculation');
+      showError(`Error deleting calculation: ${error.message}`);
     }
   };
 
   const handleEdit = (calculation) => {
     setEditingCalculation(calculation);
-    setFormData({
+    setCalculation({
       name: calculation.name,
       description: calculation.description || '',
-      aggregation_function: calculation.aggregation_function,
-      source_model: calculation.source_model,
+      function_type: calculation.aggregation_function,
+      source: calculation.source_model,
       source_field: calculation.source_field,
-      group_level: calculation.group_level,
+      level: calculation.group_level,
       weight_field: calculation.weight_field || ''
     });
     setIsEditing(true);
@@ -165,200 +202,195 @@ const CalculationBuilder = () => {
     setIsEditing(false);
     setEditingCalculation(null);
     setError(null);
-    setFormData({
+    setCalculation({
       name: '',
       description: '',
-      aggregation_function: 'SUM',
-      source_model: 'TrancheBal',
+      function_type: 'sum',
+      source: '',
       source_field: '',
-      group_level: 'deal',
+      level: 'deal',
       weight_field: ''
     });
   };
 
   const getPreviewFormula = () => {
-    if (!formData.aggregation_function || !formData.source_field) {
+    if (!calculation.function_type || !calculation.source_field) {
       return 'Select aggregation function and field to see preview';
     }
 
-    const field = `${formData.source_model}.${formData.source_field}`;
+    const field = `${calculation.source_model}.${calculation.source_field}`;
     
-    if (formData.aggregation_function === 'WEIGHTED_AVG') {
-      const weightField = formData.weight_field ? `${formData.source_model}.${formData.weight_field}` : 'weight_field';
+    if (calculation.function_type === 'WEIGHTED_AVG') {
+      const weightField = calculation.weight_field ? `${calculation.source_model}.${calculation.weight_field}` : '[weight_field]';
       return `SUM(${field} * ${weightField}) / NULLIF(SUM(${weightField}), 0)`;
-    } else {
-      return `${formData.aggregation_function}(${field})`;
     }
+    
+    return `${calculation.function_type}(${field})`;
   };
 
-  const getFieldTypeIcon = (type) => {
-    switch(type) {
-      case 'currency': return '💰';
-      case 'percentage': return '📊';
-      case 'number': return '🔢';
-      case 'text': return '📝';
-      default: return '📄';
-    }
-  };
+  const availableFields = getAvailableFields(calculation.source_model);
 
   return (
-    <div className="max-w-6xl mx-auto p-6 bg-gray-50 min-h-screen">
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Calculator className="h-8 w-8 text-blue-600" />
-            <h1 className="text-3xl font-bold text-gray-900">ORM Calculation Builder</h1>
-          </div>
-          {!isEditing && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              New Calculation
-            </button>
-          )}
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">ORM Calculation Builder</h1>
         </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-6">
-            {error}
-          </div>
+        {!isEditing && (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            New Calculation
+          </button>
         )}
+      </div>
 
-        {isEditing && (
-          <div className="bg-gray-50 rounded-lg p-6 mb-6 border-2 border-blue-200">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">
-              {editingCalculation ? 'Edit Calculation' : 'Create New Calculation'}
-            </h2>
-            
-            <div className="space-y-6">
-              {/* Basic Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Calculation Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., Total Ending Balance"
-                  />
-                </div>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-6">
+          {error}
+        </div>
+      )}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Group Level *
-                  </label>
-                  <select
-                    value={formData.group_level}
-                    onChange={(e) => setFormData({ ...formData, group_level: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {groupLevels.map(level => (
-                      <option key={level.value} value={level.value}>
-                        {level.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {groupLevels.find(l => l.value === formData.group_level)?.description}
-                  </p>
-                </div>
+      {isEditing && (
+        <div className="bg-gray-50 rounded-lg p-6 mb-6 border-2 border-blue-200">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">
+            {editingCalculation ? 'Edit Calculation' : 'Create New Calculation'}
+          </h2>
+          
+          <div className="space-y-6">
+            {/* Basic Information */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Calculation Name *
+                </label>
+                <input
+                  type="text"
+                  value={calculation.name}
+                  onChange={(e) => setCalculation({ ...calculation, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., Total Ending Balance"
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
+                  Group Level *
                 </label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                <select
+                  value={calculation.level}
+                  onChange={(e) => setCalculation({ ...calculation, level: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Brief description of this calculation"
-                />
+                >
+                  {groupLevels.map(level => (
+                    <option key={level.value} value={level.value}>
+                      {level.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {groupLevels.find(l => l.value === calculation.level)?.description}
+                </p>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Description
+              </label>
+              <textarea
+                value={calculation.description}
+                onChange={(e) => setCalculation({ ...calculation, description: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows="3"
+                placeholder="Describe what this calculation measures..."
+              />
+            </div>
+
+            {/* Source Configuration */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Source Model *
+                </label>
+                <select
+                  value={calculation.source}
+                  onChange={(e) => setCalculation({ ...calculation, source: e.target.value, source_field: '' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {sourceModels.map(model => (
+                    <option key={model.value} value={model.value}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {sourceModels.find(m => m.value === calculation.source)?.description}
+                </p>
               </div>
 
-              {/* Source Configuration */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Source Model *
-                  </label>
-                  <select
-                    value={formData.source_model}
-                    onChange={(e) => setFormData({ ...formData, source_model: e.target.value, source_field: '' })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {sourceModels.map(model => (
-                      <option key={model.value} value={model.value}>
-                        {model.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {sourceModels.find(m => m.value === formData.source_model)?.description}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Aggregation Function *
-                  </label>
-                  <select
-                    value={formData.aggregation_function}
-                    onChange={(e) => setFormData({ ...formData, aggregation_function: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {aggregationFunctions.map(func => (
-                      <option key={func.value} value={func.value}>
-                        {func.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {aggregationFunctions.find(f => f.value === formData.aggregation_function)?.description}
-                  </p>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Aggregation Function *
+                </label>
+                <select
+                  value={calculation.function_type}
+                  onChange={(e) => setCalculation({ ...calculation, function_type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {aggregationFunctions.map(func => (
+                    <option key={func.value} value={func.value}>
+                      {func.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {aggregationFunctions.find(f => f.value === calculation.function_type)?.description}
+                </p>
               </div>
+            </div>
 
-              {/* Field Selection */}
+            {/* Field Selection */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Source Field *
                 </label>
                 <select
-                  value={formData.source_field}
-                  onChange={(e) => setFormData({ ...formData, source_field: e.target.value })}
+                  value={calculation.source_field}
+                  onChange={(e) => setCalculation({ ...calculation, source_field: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select a field...</option>
-                  {availableFields[formData.source_model]?.map(field => (
+                  {availableFields.map(field => (
                     <option key={field.value} value={field.value}>
-                      {getFieldTypeIcon(field.type)} {field.label}
+                      {field.label} ({field.type})
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Available fields from {calculation.source_model} model
+                </p>
               </div>
 
               {/* Weight Field for Weighted Average */}
-              {formData.aggregation_function === 'WEIGHTED_AVG' && (
+              {calculation.function_type === 'WEIGHTED_AVG' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Weight Field * (for weighted average)
+                    Weight Field *
                   </label>
                   <select
-                    value={formData.weight_field}
-                    onChange={(e) => setFormData({ ...formData, weight_field: e.target.value })}
+                    value={calculation.weight_field}
+                    onChange={(e) => setCalculation({ ...calculation, weight_field: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select weight field...</option>
-                    {availableFields[formData.source_model]?.map(field => (
+                    {availableFields.filter(f => f.type === 'currency' || f.type === 'number').map(field => (
                       <option key={field.value} value={field.value}>
-                        {getFieldTypeIcon(field.type)} {field.label}
+                        {field.label}
                       </option>
                     ))}
                   </select>
@@ -367,121 +399,202 @@ const CalculationBuilder = () => {
                   </p>
                 </div>
               )}
+            </div>
 
-              {/* ORM Formula Preview */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Generated ORM Formula Preview
-                </label>
-                <div className="bg-gray-100 rounded p-3 border">
-                  <code className="text-sm text-gray-800 font-mono">{getPreviewFormula()}</code>
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  <strong>Model:</strong> {formData.source_model} | 
-                  <strong> Function:</strong> {formData.aggregation_function} | 
-                  <strong> Level:</strong> {formData.group_level}
-                </div>
+            {/* ORM Formula Preview */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Generated ORM Formula Preview
+              </label>
+              <div className="bg-gray-100 rounded p-3 border">
+                <code className="text-sm text-gray-800 font-mono">{getPreviewFormula()}</code>
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={handleSubmit}
-                  className="flex items-center gap-2 bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  <Save className="h-4 w-4" />
-                  {editingCalculation ? 'Update Calculation' : 'Save Calculation'}
-                </button>
-                <button
-                  onClick={handleCancel}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
+              <div className="text-xs text-gray-500 mt-1">
+                <strong>Model:</strong> {calculation.source_model} | 
+                <strong> Function:</strong> {calculation.function_type} | 
+                <strong> Level:</strong> {calculation.level}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Available Calculations List */}
-        <div>
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">Available Calculations</h2>
-          <div className="grid gap-4">
-            {calculations.map((calc) => (
-              <div key={calc.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-lg font-medium text-gray-900">{calc.name}</h3>
-                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                        {calc.aggregation_function}
-                      </span>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        calc.group_level === 'deal' ? 'bg-green-100 text-green-800' :
-                        'bg-purple-100 text-purple-800'
-                      }`}>
-                        {calc.group_level === 'deal' ? 'Deal Level' : 'Tranche Level'}
-                      </span>
-                      <span className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-full">
-                        {calc.source_model}
-                      </span>
-                    </div>
-                    {calc.description && (
-                      <p className="text-gray-600 mb-2">{calc.description}</p>
-                    )}
-                    
-                    <div className="bg-gray-50 rounded p-3 mb-2">
-                      <div className="text-sm text-gray-700">
-                        <strong>Source:</strong> {calc.source_model}.{calc.source_field}
-                        {calc.weight_field && (
-                          <span> | <strong>Weight:</strong> {calc.source_model}.{calc.weight_field}</span>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <Database className="h-3 w-3" />
-                      <span>ORM-based calculation using SQLAlchemy func.{calc.aggregation_function.toLowerCase()}</span>
-                    </div>
-                    
-                    {calc.created_at && (
-                      <div className="text-xs text-gray-400 mt-2">
-                        Created: {new Date(calc.created_at).toLocaleString()}
-                        {calc.updated_at && calc.updated_at !== calc.created_at && (
-                          <span className="ml-4">Updated: {new Date(calc.updated_at).toLocaleString()}</span>
-                        )}
-                      </div>
-                    )}
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={handleSaveCalculation}
+                className="flex items-center gap-2 bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <Save className="h-4 w-4" />
+                {editingCalculation ? 'Update Calculation' : 'Save Calculation'}
+              </button>
+              <button
+                onClick={handleCancel}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Available Calculations List */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 text-gray-800">Available Calculations</h2>
+        <div className="grid gap-4">
+          {calculations.map((calc) => (
+            <div key={calc.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-lg font-medium text-gray-900">{calc.name}</h3>
+                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                      {calc.aggregation_function}
+                    </span>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      calc.group_level === 'deal' ? 'bg-green-100 text-green-800' :
+                      'bg-purple-100 text-purple-800'
+                    }`}>
+                      {calc.group_level === 'deal' ? 'Deal Level' : 'Tranche Level'}
+                    </span>
+                    <span className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-full">
+                      {calc.source_model}
+                    </span>
                   </div>
-                  <div className="flex gap-2 ml-4">
-                    <button
-                      onClick={() => handleEdit(calc)}
-                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                      title="Edit calculation"
-                    >
-                      <Edit3 className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(calc.id)}
-                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                      title="Delete calculation"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                  {calc.description && (
+                    <p className="text-gray-600 mb-2">{calc.description}</p>
+                  )}
+                  
+                  <div className="bg-gray-50 rounded p-3 mb-2">
+                    <div className="text-sm text-gray-700">
+                      <strong>Source:</strong> {calc.source_model}.{calc.source_field}
+                      {calc.weight_field && (
+                        <span> | <strong>Weight:</strong> {calc.source_model}.{calc.weight_field}</span>
+                      )}
+                    </div>
                   </div>
+                  
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <Database className="h-3 w-3" />
+                    <span>ORM-based calculation using SQLAlchemy func.{calc.aggregation_function.toLowerCase()}</span>
+                  </div>
+                  
+                  {calc.created_at && (
+                    <div className="text-xs text-gray-400 mt-2">
+                      Created: {new Date(calc.created_at).toLocaleString()}
+                      {calc.updated_at && calc.updated_at !== calc.created_at && (
+                        <span className="ml-4">Updated: {new Date(calc.updated_at).toLocaleString()}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 ml-4">
+                  <button
+                    onClick={() => handlePreviewSQL(calc.id)}
+                    className="flex items-center gap-1 bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700 transition-colors"
+                    title="Preview SQL"
+                  >
+                    <Eye className="h-3 w-3" />
+                    SQL
+                  </button>
+                  <button
+                    onClick={() => handleEdit(calc)}
+                    className="flex items-center gap-1 bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700 transition-colors"
+                    title="Edit"
+                  >
+                    <Edit3 className="h-3 w-3" />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(calc.id, calc.name)}
+                    className="flex items-center gap-1 bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Delete
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
           
           {calculations.length === 0 && (
             <div className="text-center py-8 text-gray-500">
-              <Calculator className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>No calculations found. Create your first calculation to get started.</p>
+              No calculations available. Create your first calculation above.
             </div>
           )}
         </div>
       </div>
+
+      {/* SQL Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">SQL Preview</h2>
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              {previewLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-600">Generating SQL preview...</span>
+                </div>
+              ) : previewData ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Calculation Details</h3>
+                      <div className="bg-gray-50 rounded p-3 text-sm">
+                        <p><strong>Name:</strong> {previewData.calculation_name}</p>
+                        <p><strong>Function:</strong> {previewData.calculation_config?.aggregation_function}</p>
+                        <p><strong>Source:</strong> {previewData.calculation_config?.source_model}.{previewData.calculation_config?.source_field}</p>
+                        <p><strong>Level:</strong> {previewData.calculation_config?.group_level}</p>
+                        {previewData.calculation_config?.weight_field && (
+                          <p><strong>Weight:</strong> {previewData.calculation_config.weight_field}</p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Sample Filters</h3>
+                      <div className="bg-gray-50 rounded p-3 text-sm">
+                        <p><strong>Deals:</strong> {previewData.sample_parameters?.deals?.join(', ') || 'N/A'}</p>
+                        <p><strong>Tranches:</strong> {previewData.sample_parameters?.tranches?.join(', ') || 'N/A'}</p>
+                        <p><strong>Cycle:</strong> {previewData.sample_parameters?.cycle || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Generated SQL Query</h3>
+                    <div className="bg-gray-900 text-green-400 rounded p-4 overflow-x-auto">
+                      <pre className="text-sm font-mono whitespace-pre-wrap">{previewData.generated_sql}</pre>
+                    </div>
+                  </div>
+                  
+                  {previewData.sql_parameters && Object.keys(previewData.sql_parameters).length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Query Parameters</h3>
+                      <div className="bg-gray-50 rounded p-3">
+                        <pre className="text-sm">{JSON.stringify(previewData.sql_parameters, null, 2)}</pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No preview data available
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

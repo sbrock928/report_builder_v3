@@ -2,7 +2,7 @@
 """Service for refactored calculations management"""
 
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Tuple
 from app.core.exceptions import CalculationNotFoundError, CalculationAlreadyExistsError, InvalidCalculationError
 from .repository import CalculationRepository
 from .models import Calculation, AggregationFunction, SourceModel, GroupLevel
@@ -25,6 +25,93 @@ class CalculationService:
             for calc in calculations
         ]
     
+    async def preview_calculation_sql(
+        self,
+        calc_id: int,
+        aggregation_level: str = "deal",
+        sample_deals: List[int] = None,
+        sample_tranches: List[str] = None,
+        sample_cycle: int = None
+    ) -> Dict[str, Any]:
+        """Generate SQL preview for an existing calculation"""
+        calculation = self.db.query(Calculation).filter(
+            Calculation.id == calc_id,
+            Calculation.is_active == True
+        ).first()
+        
+        if not calculation:
+            raise CalculationNotFoundError(f"Calculation with ID {calc_id} not found")
+        
+        # Convert ORM calculation to dictionary format for query builder
+        calc_dict = {
+            'name': calculation.name,
+            'formula': self._build_formula_from_calculation(calculation),
+            'source_tables': self._get_source_tables_from_calculation(calculation),
+            'group_level': calculation.group_level.value
+        }
+        
+        # Use query builder to generate preview
+        from app.features.reports.builders import FilterBuilder, ReportQueryBuilder
+        filter_builder = FilterBuilder()
+        query_builder = ReportQueryBuilder(filter_builder)
+        
+        query, params = query_builder.preview_calculation_subquery(
+            calc_dict, aggregation_level, sample_deals, sample_tranches, sample_cycle
+        )
+        
+        return {
+            "calculation_name": calculation.name,
+            "description": calculation.description,
+            "aggregation_level": aggregation_level,
+            "sample_parameters": {
+                "deals": sample_deals or [101, 102, 103],
+                "tranches": sample_tranches or ["A", "B"],
+                "cycle": sample_cycle or 202404
+            },
+            "generated_sql": query,
+            "sql_parameters": params,
+            "calculation_config": {
+                "aggregation_function": calculation.aggregation_function.value,
+                "source_model": calculation.source_model.value,
+                "source_field": calculation.source_field,
+                "group_level": calculation.group_level.value,
+                "weight_field": calculation.weight_field
+            }
+        }
+
+    def _build_formula_from_calculation(self, calculation: Calculation) -> str:
+        """Build SQL formula from ORM calculation definition"""
+        # Map source model to table alias
+        model_to_table = {
+            "Deal": "d",
+            "Tranche": "t", 
+            "TrancheBal": "tb"
+        }
+        
+        table_alias = model_to_table.get(calculation.source_model.value, "d")
+        field_ref = f"{table_alias}.{calculation.source_field}"
+        
+        if calculation.aggregation_function == AggregationFunction.WEIGHTED_AVG:
+            if not calculation.weight_field:
+                raise ValueError(f"Weighted average calculation requires weight_field")
+            weight_ref = f"{table_alias}.{calculation.weight_field}"
+            return f"SUM({field_ref} * {weight_ref}) / NULLIF(SUM({weight_ref}), 0)"
+        else:
+            func_name = calculation.aggregation_function.value
+            return f"{func_name}({field_ref})"
+
+    def _get_source_tables_from_calculation(self, calculation: Calculation) -> List[str]:
+        """Get required source tables for this calculation"""
+        tables = []
+        
+        if calculation.source_model in [SourceModel.TRANCHE, SourceModel.TRANCHE_BAL]:
+            tables.append("tranche t")
+        
+        if calculation.source_model == SourceModel.TRANCHE_BAL:
+            tables.append("tranchebal tb")
+        
+        return tables
+
     async def create_calculation(self, request: CalculationCreateRequest, user_id: str = "api_user") -> CalculationResponse:
         """Create a new calculation"""
         # Check if calculation name already exists

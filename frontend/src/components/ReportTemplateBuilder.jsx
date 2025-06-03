@@ -1,6 +1,6 @@
 // frontend/src/components/ReportTemplateBuilder.jsx
 import React, { useState, useEffect } from 'react';
-import { Save, Play, Edit3, Trash2, FileText, Clock, CheckCircle, Calendar, History } from 'lucide-react';
+import { Save, Play, Edit3, Trash2, FileText, Clock, CheckCircle, Calendar, History, Eye, X } from 'lucide-react';
 
 const ReportTemplateBuilder = () => {
   const [templates, setTemplates] = useState([]);
@@ -12,6 +12,9 @@ const ReportTemplateBuilder = () => {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [selectedCycle, setSelectedCycle] = useState('');
   const [error, setError] = useState(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -304,6 +307,33 @@ const ReportTemplateBuilder = () => {
       : [...formData.selected_calculations, calcName];
     
     setFormData(prev => ({ ...prev, selected_calculations: newCalcs }));
+  };
+
+  const handlePreviewSQL = async (template) => {
+    setPreviewLoading(true);
+    setPreviewData(null);
+    setShowPreviewModal(true);
+    
+    try {
+      // Use a sample cycle for preview
+      const sampleCycle = availableOptions.cycles.length > 0 ? availableOptions.cycles[0].cycle_cde : 202404;
+      const response = await fetch(`/api/reports/templates/${template.id}/preview-sql?cycle_code=${sampleCycle}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPreviewData(data);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.detail || 'Error generating SQL preview');
+        setShowPreviewModal(false);
+      }
+    } catch (error) {
+      console.error('Error previewing SQL:', error);
+      setError('Error generating SQL preview');
+      setShowPreviewModal(false);
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   return (
@@ -607,6 +637,14 @@ const ReportTemplateBuilder = () => {
                 </div>
                 <div className="flex gap-2 ml-4">
                   <button
+                    onClick={() => handlePreviewSQL(template)}
+                    className="flex items-center gap-1 bg-indigo-600 text-white px-3 py-2 rounded text-sm hover:bg-indigo-700"
+                    title="Preview SQL"
+                  >
+                    <Eye className="h-3 w-3" />
+                    SQL
+                  </button>
+                  <button
                     onClick={() => handleExecuteClick(template)}
                     disabled={isExecuting}
                     className="flex items-center gap-1 bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 disabled:bg-gray-400"
@@ -704,6 +742,100 @@ const ReportTemplateBuilder = () => {
           </div>
         )}
       </div>
+
+      {/* SQL Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Report Template SQL Preview</h2>
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              {previewLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-600">Generating SQL preview...</span>
+                </div>
+              ) : previewData ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Template Details</h3>
+                      <div className="bg-gray-50 rounded p-3 text-sm">
+                        <p><strong>Name:</strong> {previewData.template_name}</p>
+                        <p><strong>Level:</strong> {previewData.aggregation_level}</p>
+                        <p><strong>Sample Cycle:</strong> {previewData.sample_cycle}</p>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Scope</h3>
+                      <div className="bg-gray-50 rounded p-3 text-sm">
+                        <p><strong>Deals:</strong> {previewData.deal_count} selected</p>
+                        <p><strong>Tranches:</strong> {previewData.tranche_count} selected</p>
+                        <p><strong>Calculations:</strong> {previewData.calculation_count} selected</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Query Info</h3>
+                      <div className="bg-gray-50 rounded p-3 text-sm">
+                        <p><strong>Query Type:</strong> Aggregated Report</p>
+                        <p><strong>Est. Rows:</strong> {previewData.estimated_rows || 'Unknown'}</p>
+                        <p><strong>Complexity:</strong> {previewData.query_complexity || 'Medium'}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Generated SQL Query</h3>
+                    <div className="bg-gray-900 text-green-400 rounded p-4 overflow-x-auto">
+                      <pre className="text-sm font-mono whitespace-pre-wrap">{previewData.sql_query}</pre>
+                    </div>
+                  </div>
+                  
+                  {Object.keys(previewData.parameters || {}).length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Query Parameters</h3>
+                      <div className="bg-gray-50 rounded p-3">
+                        <pre className="text-sm">{JSON.stringify(previewData.parameters, null, 2)}</pre>
+                      </div>
+                    </div>
+                  )}
+
+                  {previewData.selected_calculations && previewData.selected_calculations.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Included Calculations</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {previewData.selected_calculations.map((calc, index) => (
+                          <div key={index} className="bg-gray-50 rounded p-3 text-sm">
+                            <p><strong>{calc.name}</strong></p>
+                            <p className="text-gray-600">{calc.aggregation_function}({calc.source_model}.{calc.source_field})</p>
+                            {calc.weight_field && (
+                              <p className="text-gray-500">Weight: {calc.weight_field}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No preview data available
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

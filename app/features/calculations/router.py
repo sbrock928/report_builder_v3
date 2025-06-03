@@ -1,23 +1,24 @@
 # app/features/calculations/router.py
-"""API endpoints for refactored calculations management"""
+"""Refactored calculations router using unified query engine"""
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Any, Dict, List, Optional
-from app.core.dependencies import get_config_db, get_database_sessions, DatabaseSessions
+from typing import List, Optional
+from app.core.dependencies import get_config_only_db, get_query_engine
 from app.core.exceptions import CalculationNotFoundError, CalculationAlreadyExistsError, InvalidCalculationError
+from app.shared.query_engine import QueryEngine
 from .service import CalculationService
 from .schemas import CalculationCreateRequest, CalculationResponse
 
 router = APIRouter()
 
-def get_calculation_service(db: Session = Depends(get_config_db)) -> CalculationService:
-    """Get calculation service with config database session only"""
-    return CalculationService(db)
+def get_calculation_service(config_db: Session = Depends(get_config_only_db)) -> CalculationService:
+    """Get calculation service for config-only operations"""
+    return CalculationService(config_db)
 
-def get_calculation_service_with_preview(sessions: DatabaseSessions = Depends(get_database_sessions)) -> CalculationService:
-    """Get calculation service with both database sessions for SQL preview functionality"""
-    return CalculationService(sessions.config_db, sessions.dw_db)
+def get_calculation_service_with_preview(query_engine: QueryEngine = Depends(get_query_engine)) -> CalculationService:
+    """Get calculation service with query engine for preview operations"""
+    return CalculationService(query_engine.config_db, query_engine)
 
 @router.get("", response_model=List[CalculationResponse])
 async def get_available_calculations(
@@ -47,7 +48,7 @@ async def preview_calculation_sql(
     sample_tranches: str = Query("A,B", description="Comma-separated sample tranche IDs"),
     sample_cycle: int = Query(202404, description="Sample cycle code")
 ):
-    """Preview the SQL that would be generated for this calculation using the same ORM logic as reports"""
+    """Preview SQL using unified query engine"""
     try:
         # Parse comma-separated values
         deal_list = [int(d.strip()) for d in sample_deals.split(',') if d.strip()]

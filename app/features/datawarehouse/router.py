@@ -1,9 +1,9 @@
 # app/features/datawarehouse/router.py
-"""API endpoints for data warehouse operations"""
+"""Fixed datawarehouse router using direct database session"""
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional
 from app.core.dependencies import get_dw_db
 from .service import DataWarehouseService
 
@@ -27,7 +27,6 @@ async def get_available_tranches(
     deal_numbers: Optional[str] = Query(None, description="Comma-separated deal numbers")
 ):
     """Get list of available tranches, optionally filtered by deal(s)"""
-    # Handle both single deal_number and comma-separated deal_numbers
     if deal_numbers:
         try:
             deal_list = [int(x.strip()) for x in deal_numbers.split(',') if x.strip()]

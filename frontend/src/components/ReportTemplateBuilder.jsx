@@ -765,67 +765,34 @@ const ReportTemplateBuilder = () => {
                 </div>
               ) : previewData ? (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <h3 className="text-sm font-medium text-gray-700 mb-2">Template Details</h3>
                       <div className="bg-gray-50 rounded p-3 text-sm">
                         <p><strong>Name:</strong> {previewData.template_name}</p>
                         <p><strong>Level:</strong> {previewData.aggregation_level}</p>
-                        <p><strong>Sample Cycle:</strong> {previewData.sample_cycle}</p>
                       </div>
                     </div>
                     
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Scope</h3>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Parameters</h3>
                       <div className="bg-gray-50 rounded p-3 text-sm">
-                        <p><strong>Deals:</strong> {previewData.deal_count} selected</p>
-                        <p><strong>Tranches:</strong> {previewData.tranche_count} selected</p>
-                        <p><strong>Calculations:</strong> {previewData.calculation_count} selected</p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Query Info</h3>
-                      <div className="bg-gray-50 rounded p-3 text-sm">
-                        <p><strong>Query Type:</strong> Aggregated Report</p>
-                        <p><strong>Est. Rows:</strong> {previewData.estimated_rows || 'Unknown'}</p>
-                        <p><strong>Complexity:</strong> {previewData.query_complexity || 'Medium'}</p>
+                        <p><strong>Cycle:</strong> {previewData.parameters?.cycle_code}</p>
+                        <p><strong>Deals:</strong> {previewData.parameters?.deal_numbers?.length || 0} selected</p>
+                        <p><strong>Tranches:</strong> {previewData.parameters?.tranche_ids?.length || 0} selected</p>
                       </div>
                     </div>
                   </div>
                   
                   <div>
-                    <h3 className="text-sm font-medium text-gray-700 mb-2">Generated SQL Query</h3>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Raw Execution SQL</h3>
                     <div className="bg-gray-900 text-green-400 rounded p-4 overflow-x-auto">
                       <pre className="text-sm font-mono whitespace-pre-wrap">{previewData.sql_query}</pre>
                     </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      This is the exact same SQL that executes when this report template runs.
+                    </p>
                   </div>
-                  
-                  {Object.keys(previewData.parameters || {}).length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Query Parameters</h3>
-                      <div className="bg-gray-50 rounded p-3">
-                        <pre className="text-sm">{JSON.stringify(previewData.parameters, null, 2)}</pre>
-                      </div>
-                    </div>
-                  )}
-
-                  {previewData.selected_calculations && previewData.selected_calculations.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Included Calculations</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {previewData.selected_calculations.map((calc, index) => (
-                          <div key={index} className="bg-gray-50 rounded p-3 text-sm">
-                            <p><strong>{calc.name}</strong></p>
-                            <p className="text-gray-600">{calc.aggregation_function}({calc.source_model}.{calc.source_field})</p>
-                            {calc.weight_field && (
-                              <p className="text-gray-500">Weight: {calc.weight_field}</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">

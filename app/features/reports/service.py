@@ -1,49 +1,41 @@
 # app/features/reports/service.py
-"""Updated service with cycle_code moved to execution time"""
+"""Refactored report service using unified query engine"""
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 import time
 
 from app.core.exceptions import ReportGenerationError
-from app.features.calculations.service import CalculationNotFoundError
-from app.features.datawarehouse.models import Deal, Tranche, TrancheBal
-from app.features.calculations.models import Calculation, SourceModel, AggregationFunction
-from app.shared.sql_preview_service import SqlPreviewService
+from app.features.calculations.models import Calculation
+from app.shared.query_engine import QueryEngine
 from .models import Report, ReportDeal, ReportTranche, ReportCalculation, ReportExecutionLog
 from .schemas import (
     ReportCreateRequest, ReportUpdateRequest, ReportExecuteRequest,
-    ReportResponse, ReportRow, ReportTemplateResponse, ReportTemplateDetailResponse
+    ReportResponse, ReportTemplateResponse, ReportTemplateDetailResponse
 )
 from .repository import ReportRepository
 
 class ReportService:
-    """Updated service for template-based reports with runtime cycle selection"""
+    """Streamlined report service using unified query engine"""
     
-    def __init__(self, dw_db: Session, config_db: Session):
-        self.dw_db = dw_db
+    def __init__(self, config_db: Session, query_engine: QueryEngine):
         self.config_db = config_db
+        self.query_engine = query_engine
         self.repository = ReportRepository(config_db)
-        # Initialize shared SQL preview service
-        self.sql_preview_service = SqlPreviewService(dw_db, config_db)
     
     async def create_report_template(self, request: ReportCreateRequest, user_id: str = "api_user") -> ReportTemplateDetailResponse:
-        """Create a new report template (no cycle_code stored)"""
+        """Create a new report template"""
         
-        # Validate calculations exist
-        calculations = self.config_db.query(Calculation).filter(
-            Calculation.name.in_(request.selected_calculations),
-            Calculation.is_active == True
-        ).all()
+        # Validate calculations exist using query engine
+        calculations = self.query_engine.get_calculations_by_names(request.selected_calculations)
         
         if len(calculations) != len(request.selected_calculations):
             found_names = {calc.name for calc in calculations}
             missing = set(request.selected_calculations) - found_names
             raise ReportGenerationError(f"Calculations not found: {', '.join(missing)}")
         
-        # Create report (no cycle_code)
+        # Create report
         report = Report(
             name=request.name,
             description=request.description,
@@ -111,7 +103,7 @@ class ReportService:
         return result
     
     async def get_report_template_detail(self, report_id: int) -> ReportTemplateDetailResponse:
-        """Get detailed report template configuration with recent executions"""
+        """Get detailed report template configuration"""
         report = self.config_db.query(Report).filter(
             Report.id == report_id,
             Report.is_active == True
@@ -167,7 +159,7 @@ class ReportService:
         )
     
     async def update_report_template(self, report_id: int, request: ReportUpdateRequest) -> ReportTemplateDetailResponse:
-        """Update an existing report template (no cycle_code updates)"""
+        """Update an existing report template"""
         report = self.config_db.query(Report).filter(
             Report.id == report_id,
             Report.is_active == True
@@ -176,7 +168,7 @@ class ReportService:
         if not report:
             raise ReportGenerationError(f"Report template {report_id} not found")
         
-        # Update basic fields (no cycle_code)
+        # Update basic fields
         if request.name is not None:
             report.name = request.name
         if request.description is not None:
@@ -184,20 +176,14 @@ class ReportService:
         
         # Update deals if provided
         if request.selected_deals is not None:
-            # Delete existing deals
             self.config_db.query(ReportDeal).filter(ReportDeal.report_id == report_id).delete()
-            
-            # Add new deals
             for deal_num in request.selected_deals:
                 report_deal = ReportDeal(report_id=report_id, deal_number=deal_num)
                 self.config_db.add(report_deal)
         
         # Update tranches if provided
         if request.selected_tranches is not None:
-            # Delete existing tranches
             self.config_db.query(ReportTranche).filter(ReportTranche.report_id == report_id).delete()
-            
-            # Add new tranches (use existing or updated deals)
             deal_numbers = request.selected_deals if request.selected_deals is not None else [rd.deal_number for rd in report.report_deals]
             for tranche_id in request.selected_tranches:
                 for deal_num in deal_numbers:
@@ -210,14 +196,10 @@ class ReportService:
         
         # Update calculations if provided
         if request.selected_calculations is not None:
-            # Delete existing calculations
             self.config_db.query(ReportCalculation).filter(ReportCalculation.report_id == report_id).delete()
             
-            # Validate calculations exist
-            calculations = self.config_db.query(Calculation).filter(
-                Calculation.name.in_(request.selected_calculations),
-                Calculation.is_active == True
-            ).all()
+            # Validate calculations exist using query engine
+            calculations = self.query_engine.get_calculations_by_names(request.selected_calculations)
             
             if len(calculations) != len(request.selected_calculations):
                 found_names = {calc.name for calc in calculations}
@@ -239,7 +221,7 @@ class ReportService:
         return await self.get_report_template_detail(report_id)
     
     async def execute_report(self, report_id: int, request: ReportExecuteRequest, user_id: str = "api_user") -> ReportResponse:
-        """Execute a report template with specified cycle_code"""
+        """Execute a report template using unified query engine"""
         start_time = time.time()
         
         try:
@@ -252,12 +234,10 @@ class ReportService:
             if not report:
                 raise ReportGenerationError(f"Report template {report_id} not found")
             
-            # cycle_code comes from request (required)
-            cycle_code = request.cycle_code
-            
-            # Load report configuration
+            # Get report configuration
             deal_numbers = [rd.deal_number for rd in report.report_deals]
             tranche_ids = [rt.tranche_id for rt in report.report_tranches]
+            cycle_code = request.cycle_code
             
             # Load calculations ordered by display_order
             report_calculations = self.config_db.query(ReportCalculation).filter(
@@ -270,19 +250,25 @@ class ReportService:
                 if calc:
                     calculations.append(calc)
             
-            # Generate report data using the same consolidated ORM query approach as preview
-            if report.aggregation_level == "tranche":
-                data = self._execute_consolidated_tranche_level_report(
-                    deal_numbers, tranche_ids, cycle_code, calculations
-                )
-            else:
-                data = self._execute_consolidated_deal_level_report(
-                    deal_numbers, tranche_ids, cycle_code, calculations
-                )
+            # Execute report using unified query engine
+            results = self.query_engine.execute_report_query(
+                deal_numbers=deal_numbers,
+                tranche_ids=tranche_ids,
+                cycle_code=cycle_code,
+                calculations=calculations,
+                aggregation_level=report.aggregation_level
+            )
+            
+            # Process results using query engine
+            data = self.query_engine.process_report_results(
+                results=results,
+                calculations=calculations,
+                aggregation_level=report.aggregation_level
+            )
             
             execution_time = (time.time() - start_time) * 1000
             
-            # Log successful execution (with cycle_code)
+            # Log successful execution
             await self._log_execution(
                 report_id=report_id,
                 cycle_code=cycle_code,
@@ -307,7 +293,7 @@ class ReportService:
         except Exception as e:
             execution_time = (time.time() - start_time) * 1000
             
-            # Log failed execution (with cycle_code)
+            # Log failed execution
             await self._log_execution(
                 report_id=report_id,
                 cycle_code=request.cycle_code,
@@ -321,7 +307,7 @@ class ReportService:
             raise ReportGenerationError(f"Report execution failed: {str(e)}")
     
     async def preview_report_sql(self, report_id: int, cycle_code: int) -> Dict[str, Any]:
-        """Preview SQL that would be generated for this report template using the shared ORM logic"""
+        """Preview SQL using unified query engine"""
         # Load report template
         report = self.config_db.query(Report).filter(
             Report.id == report_id,
@@ -346,8 +332,8 @@ class ReportService:
             if calc:
                 calculations.append(calc)
         
-        # Use the shared preview service (same ORM logic as execution and calculation previews)
-        return self.sql_preview_service.preview_report_sql(
+        # Use unified query engine for preview
+        return self.query_engine.preview_report_sql(
             report_name=report.name,
             aggregation_level=report.aggregation_level,
             deal_numbers=deal_numbers,
@@ -356,78 +342,8 @@ class ReportService:
             calculations=calculations
         )
 
-    def _execute_consolidated_deal_level_report(self, deal_numbers: List[int], tranche_ids: List[str], cycle_code: int, calculations: List[Calculation]) -> List[ReportRow]:
-        """Execute deal-level report using shared consolidated ORM query"""
-        
-        # Build and execute the consolidated query using the shared service
-        query = self.sql_preview_service.build_consolidated_query(
-            deal_numbers=deal_numbers, 
-            tranche_ids=tranche_ids, 
-            cycle_code=cycle_code, 
-            calculations=calculations, 
-            aggregation_level="deal"
-        )
-        results = query.all()
-        
-        # Convert results to ReportRow format
-        data = []
-        for result in results:
-            # Extract base fields
-            deal_nbr = result.deal_number
-            cycle = result.cycle_code
-            
-            # Extract calculation values
-            values = {}
-            for calc in calculations:
-                calc_value = getattr(result, calc.name, None)
-                values[calc.name] = calc_value
-            
-            data.append(ReportRow(
-                dl_nbr=deal_nbr,
-                cycle_cde=cycle,
-                values=values
-            ))
-        
-        return data
-    
-    def _execute_consolidated_tranche_level_report(self, deal_numbers: List[int], tranche_ids: List[str], cycle_code: int, calculations: List[Calculation]) -> List[ReportRow]:
-        """Execute tranche-level report using shared consolidated ORM query"""
-        
-        # Build and execute the consolidated query using the shared service
-        query = self.sql_preview_service.build_consolidated_query(
-            deal_numbers=deal_numbers, 
-            tranche_ids=tranche_ids, 
-            cycle_code=cycle_code, 
-            calculations=calculations, 
-            aggregation_level="tranche"
-        )
-        results = query.all()
-        
-        # Convert results to ReportRow format
-        data = []
-        for result in results:
-            # Extract base fields
-            deal_nbr = result.deal_number
-            tranche_id = result.tranche_id
-            cycle = result.cycle_code
-            
-            # Extract calculation values
-            values = {}
-            for calc in calculations:
-                calc_value = getattr(result, calc.name, None)
-                values[calc.name] = calc_value
-            
-            data.append(ReportRow(
-                dl_nbr=deal_nbr,
-                tr_id=tranche_id,
-                cycle_cde=cycle,
-                values=values
-            ))
-        
-        return data
-
     async def get_execution_logs(self, report_id: int, limit: int = 50) -> List[dict]:
-        """Get execution logs for a report template (now includes cycle_code)"""
+        """Get execution logs for a report template"""
         report = self.config_db.query(Report).filter(
             Report.id == report_id,
             Report.is_active == True
@@ -441,7 +357,7 @@ class ReportService:
         return [
             {
                 "id": log.id,
-                "cycle_code": log.cycle_code,  # Now included
+                "cycle_code": log.cycle_code,
                 "executed_by": log.executed_by,
                 "execution_time_ms": log.execution_time_ms,
                 "row_count": log.row_count,
@@ -455,17 +371,17 @@ class ReportService:
     async def _log_execution(
         self,
         report_id: int,
-        cycle_code: int,  # Now required
+        cycle_code: int,
         executed_by: str,
         execution_time_ms: float,
         row_count: int,
         success: bool,
         error_message: str = None
     ):
-        """Log report execution (with cycle_code)"""
+        """Log report execution"""
         log_entry = ReportExecutionLog(
             report_id=report_id,
-            cycle_code=cycle_code,  # Store cycle in execution log
+            cycle_code=cycle_code,
             executed_by=executed_by,
             execution_time_ms=execution_time_ms,
             row_count=row_count,
@@ -475,15 +391,6 @@ class ReportService:
         
         self.config_db.add(log_entry)
         self.config_db.commit()
-    
-    async def delete_calculation(self, calc_id: int) -> dict:
-        """Delete a calculation (soft delete)"""
-        calculation = self.repository.get_by_id(calc_id)
-        if not calculation:
-            raise CalculationNotFoundError(f"Calculation with ID {calc_id} not found")
-        
-        self.repository.soft_delete(calculation)
-        return {"message": f"Calculation '{calculation.name}' deleted successfully"}
     
     async def delete_report_template(self, report_id: int) -> dict:
         """Delete a report template (soft delete)"""

@@ -563,17 +563,12 @@ const CalculationBuilder = () => {
                       <h3 className="text-sm font-medium text-gray-700 mb-2">Calculation Details</h3>
                       <div className="bg-gray-50 rounded p-3 text-sm">
                         <p><strong>Name:</strong> {previewData.calculation_name}</p>
-                        <p><strong>Function:</strong> {previewData.calculation_config?.aggregation_function}</p>
-                        <p><strong>Source:</strong> {previewData.calculation_config?.source_model}.{previewData.calculation_config?.source_field}</p>
-                        <p><strong>Level:</strong> {previewData.calculation_config?.group_level}</p>
-                        {previewData.calculation_config?.weight_field && (
-                          <p><strong>Weight:</strong> {previewData.calculation_config.weight_field}</p>
-                        )}
+                        <p><strong>Level:</strong> {previewData.aggregation_level}</p>
                       </div>
                     </div>
                     
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Sample Filters</h3>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Sample Parameters</h3>
                       <div className="bg-gray-50 rounded p-3 text-sm">
                         <p><strong>Deals:</strong> {previewData.sample_parameters?.deals?.join(', ') || 'N/A'}</p>
                         <p><strong>Tranches:</strong> {previewData.sample_parameters?.tranches?.join(', ') || 'N/A'}</p>
@@ -583,20 +578,14 @@ const CalculationBuilder = () => {
                   </div>
                   
                   <div>
-                    <h3 className="text-sm font-medium text-gray-700 mb-2">Generated SQL Query</h3>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Raw Execution SQL</h3>
                     <div className="bg-gray-900 text-green-400 rounded p-4 overflow-x-auto">
                       <pre className="text-sm font-mono whitespace-pre-wrap">{previewData.generated_sql}</pre>
                     </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      This is the exact same SQL that executes when this calculation runs in a report.
+                    </p>
                   </div>
-                  
-                  {previewData.sql_parameters && Object.keys(previewData.sql_parameters).length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Query Parameters</h3>
-                      <div className="bg-gray-50 rounded p-3">
-                        <pre className="text-sm">{JSON.stringify(previewData.sql_parameters, null, 2)}</pre>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">

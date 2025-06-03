@@ -1,34 +1,28 @@
 # app/features/calculations/service.py
-"""Service for refactored calculations management"""
+"""Refactored calculation service using unified query engine"""
 
 from sqlalchemy.orm import Session
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any
 from app.core.exceptions import CalculationNotFoundError, CalculationAlreadyExistsError, InvalidCalculationError
-from app.shared.sql_preview_service import SqlPreviewService
+from app.shared.query_engine import QueryEngine
 from .repository import CalculationRepository
 from .models import Calculation, AggregationFunction, SourceModel, GroupLevel
 from .schemas import CalculationCreateRequest, CalculationResponse
 
 class CalculationService:
-    """Service for calculation business logic"""
+    """Streamlined calculation service using unified query engine"""
     
-    def __init__(self, db: Session, dw_db: Session = None):
-        self.db = db
-        self.dw_db = dw_db
-        self.repository = CalculationRepository(db)
-        # Initialize shared SQL preview service if data warehouse DB is provided
-        if dw_db:
-            self.sql_preview_service = SqlPreviewService(dw_db, db)
+    def __init__(self, config_db: Session, query_engine: QueryEngine = None):
+        self.config_db = config_db
+        self.query_engine = query_engine
+        self.repository = CalculationRepository(config_db)
     
     async def get_available_calculations(self, group_level: Optional[str] = None) -> List[CalculationResponse]:
         """Get list of available calculations, optionally filtered by group level"""
         group_level_enum = GroupLevel(group_level) if group_level else None
         calculations = self.repository.get_all_calculations(group_level_enum)
         
-        return [
-            CalculationResponse.from_orm(calc)
-            for calc in calculations
-        ]
+        return [CalculationResponse.from_orm(calc) for calc in calculations]
     
     async def preview_calculation_sql(
         self,
@@ -38,59 +32,21 @@ class CalculationService:
         sample_tranches: List[str] = None,
         sample_cycle: int = None
     ) -> Dict[str, Any]:
-        """Generate SQL preview for an existing calculation using shared ORM logic"""
-        calculation = self.db.query(Calculation).filter(
-            Calculation.id == calc_id,
-            Calculation.is_active == True
-        ).first()
+        """Generate SQL preview using unified query engine"""
+        if not self.query_engine:
+            raise ValueError("Query engine required for SQL preview operations")
         
+        calculation = self.query_engine.get_calculation_by_id(calc_id)
         if not calculation:
             raise CalculationNotFoundError(f"Calculation with ID {calc_id} not found")
         
-        if not self.sql_preview_service:
-            raise ValueError("Data warehouse database session required for SQL preview")
-        
-        # Use the shared preview service that uses the same ORM logic as report execution
-        return self.sql_preview_service.preview_calculation_sql(
+        return self.query_engine.preview_calculation_sql(
             calculation=calculation,
             aggregation_level=aggregation_level,
             sample_deals=sample_deals,
             sample_tranches=sample_tranches,
             sample_cycle=sample_cycle
         )
-
-    def _build_formula_from_calculation(self, calculation: Calculation) -> str:
-        """Build SQL formula from ORM calculation definition"""
-        # Map source model to table alias
-        model_to_table = {
-            "Deal": "d",
-            "Tranche": "t", 
-            "TrancheBal": "tb"
-        }
-        
-        table_alias = model_to_table.get(calculation.source_model.value, "d")
-        field_ref = f"{table_alias}.{calculation.source_field}"
-        
-        if calculation.aggregation_function == AggregationFunction.WEIGHTED_AVG:
-            if not calculation.weight_field:
-                raise ValueError(f"Weighted average calculation requires weight_field")
-            weight_ref = f"{table_alias}.{calculation.weight_field}"
-            return f"SUM({field_ref} * {weight_ref}) / NULLIF(SUM({weight_ref}), 0)"
-        else:
-            func_name = calculation.aggregation_function.value
-            return f"{func_name}({field_ref})"
-
-    def _get_source_tables_from_calculation(self, calculation: Calculation) -> List[str]:
-        """Get required source tables for this calculation"""
-        tables = []
-        
-        if calculation.source_model in [SourceModel.TRANCHE, SourceModel.TRANCHE_BAL]:
-            tables.append("tranche t")
-        
-        if calculation.source_model == SourceModel.TRANCHE_BAL:
-            tables.append("tranchebal tb")
-        
-        return tables
 
     async def create_calculation(self, request: CalculationCreateRequest, user_id: str = "api_user") -> CalculationResponse:
         """Create a new calculation"""

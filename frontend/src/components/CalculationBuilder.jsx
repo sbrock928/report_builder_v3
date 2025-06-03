@@ -23,57 +23,90 @@ const CalculationBuilder = () => {
     weight_field: '',
     description: ''
   });
+  const [allAvailableFields, setAllAvailableFields] = useState({});
+  const [aggregationFunctions, setAggregationFunctions] = useState([]);
+  const [sourceModels, setSourceModels] = useState([]);
+  const [groupLevels, setGroupLevels] = useState([]);
+  const [fieldsLoading, setFieldsLoading] = useState(false);
   const { success, error: showError } = useNotification();
   
-  // Available options for the ORM-based system
-  const aggregationFunctions = [
-    { value: 'SUM', label: 'SUM - Total amount', description: 'Add all values together' },
-    { value: 'AVG', label: 'AVG - Average', description: 'Calculate average value' },
-    { value: 'COUNT', label: 'COUNT - Count records', description: 'Count number of records' },
-    { value: 'MIN', label: 'MIN - Minimum value', description: 'Find minimum value' },
-    { value: 'MAX', label: 'MAX - Maximum value', description: 'Find maximum value' },
-    { value: 'WEIGHTED_AVG', label: 'WEIGHTED_AVG - Weighted average', description: 'Calculate weighted average using specified weight field' }
-  ];
+  // Available options for the ORM-based system (removed - now fetched from API)
 
-  const sourceModels = [
-    { value: 'Deal', label: 'Deal', description: 'Base deal information' },
-    { value: 'Tranche', label: 'Tranche', description: 'Tranche structure data' },
-    { value: 'TrancheBal', label: 'TrancheBal', description: 'Tranche balance and performance data' }
-  ];
+  // Fetch calculation configuration from API
+  const fetchCalculationConfig = async () => {
+    setFieldsLoading(true);
+    try {
+      const response = await fetch('/api/calculations/configuration');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch calculation configuration');
+      }
 
-  const groupLevels = [
-    { value: 'deal', label: 'Deal Level', description: 'Aggregate to deal level' },
-    { value: 'tranche', label: 'Tranche Level', description: 'Aggregate to tranche level' }
-  ];
+      const result = await response.json();
+      const data = result.data || {};
+      
+      // Set all configuration data from API
+      setAllAvailableFields(data.field_mappings || {});
+      setAggregationFunctions(data.aggregation_functions || []);
+      setSourceModels(data.source_models || []);
+      setGroupLevels(data.group_levels || []);
+    } catch (error) {
+      console.error('Error fetching calculation configuration:', error);
+      showError('Error loading calculation configuration. Using default settings.');
+      
+      // Fallback to hardcoded configuration if API fails
+      setAllAvailableFields({
+        'Deal': [
+          { value: 'dl_nbr', label: 'Deal Number', type: 'number' }
+        ],
+        'Tranche': [
+          { value: 'tr_id', label: 'Tranche ID', type: 'string' },
+          { value: 'dl_nbr', label: 'Deal Number', type: 'number' }
+        ],
+        'TrancheBal': [
+          { value: 'tr_end_bal_amt', label: 'Ending Balance Amount', type: 'currency' },
+          { value: 'tr_pass_thru_rte', label: 'Pass Through Rate', type: 'percentage' },
+          { value: 'tr_accrl_days', label: 'Accrual Days', type: 'number' },
+          { value: 'tr_int_dstrb_amt', label: 'Interest Distribution Amount', type: 'currency' },
+          { value: 'tr_prin_dstrb_amt', label: 'Principal Distribution Amount', type: 'currency' },
+          { value: 'tr_int_accrl_amt', label: 'Interest Accrual Amount', type: 'currency' },
+          { value: 'tr_int_shtfl_amt', label: 'Interest Shortfall Amount', type: 'currency' },
+          { value: 'cycle_cde', label: 'Cycle Code', type: 'number' }
+        ]
+      });
+      
+      setAggregationFunctions([
+        { value: 'SUM', label: 'SUM - Total amount', description: 'Add all values together' },
+        { value: 'AVG', label: 'AVG - Average', description: 'Calculate average value' },
+        { value: 'COUNT', label: 'COUNT - Count records', description: 'Count number of records' },
+        { value: 'MIN', label: 'MIN - Minimum value', description: 'Find minimum value' },
+        { value: 'MAX', label: 'MAX - Maximum value', description: 'Find maximum value' },
+        { value: 'WEIGHTED_AVG', label: 'WEIGHTED_AVG - Weighted average', description: 'Calculate weighted average using specified weight field' }
+      ]);
+      
+      setSourceModels([
+        { value: 'Deal', label: 'Deal', description: 'Base deal information' },
+        { value: 'Tranche', label: 'Tranche', description: 'Tranche structure data' },
+        { value: 'TrancheBal', label: 'TrancheBal', description: 'Tranche balance and performance data' }
+      ]);
+      
+      setGroupLevels([
+        { value: 'deal', label: 'Deal Level', description: 'Aggregate to deal level' },
+        { value: 'tranche', label: 'Tranche Level', description: 'Aggregate to tranche level' }
+      ]);
+    } finally {
+      setFieldsLoading(false);
+    }
+  };
 
-  // Field mappings for each source model
+  // Get available fields for a source model
   const getAvailableFields = (sourceModel) => {
-    const fieldMappings = {
-      'Deal': [
-        { value: 'dl_nbr', label: 'Deal Number', type: 'number' }
-      ],
-      'Tranche': [
-        { value: 'tr_id', label: 'Tranche ID', type: 'string' },
-        { value: 'dl_nbr', label: 'Deal Number', type: 'number' }
-      ],
-      'TrancheBal': [
-        { value: 'tr_end_bal_amt', label: 'Ending Balance Amount', type: 'currency' },
-        { value: 'tr_beg_bal_amt', label: 'Beginning Balance Amount', type: 'currency' },
-        { value: 'tr_pass_thru_rte', label: 'Pass Through Rate', type: 'percentage' },
-        { value: 'tr_accrl_days', label: 'Accrual Days', type: 'number' },
-        { value: 'tr_int_dstrb_amt', label: 'Interest Distribution Amount', type: 'currency' },
-        { value: 'tr_prin_dstrb_amt', label: 'Principal Distribution Amount', type: 'currency' },
-        { value: 'tr_int_accrl_amt', label: 'Interest Accrual Amount', type: 'currency' },
-        { value: 'tr_int_shtfl_amt', label: 'Interest Shortfall Amount', type: 'currency' },
-        { value: 'cycle_cde', label: 'Cycle Code', type: 'number' }
-      ]
-    };
-    
-    return fieldMappings[sourceModel] || [];
+    return allAvailableFields[sourceModel] || [];
   };
 
   useEffect(() => {
     fetchCalculations();
+    fetchCalculationConfig();
   }, []);
 
   useEffect(() => {
@@ -271,8 +304,6 @@ const CalculationBuilder = () => {
     return `${calculation.function_type}(${field})`;
   };
 
-  const availableFields = getAvailableFields(calculation.source);
-
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="flex justify-between items-center mb-8">
@@ -281,7 +312,8 @@ const CalculationBuilder = () => {
         </div>
         <button
           onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          disabled={fieldsLoading}
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
         >
           <Plus className="h-4 w-4" />
           New Calculation
@@ -317,10 +349,12 @@ const CalculationBuilder = () => {
       <div>
         <h2 className="text-xl font-semibold mb-4 text-gray-800">Available Calculations</h2>
         
-        {isLoading ? (
+        {isLoading || fieldsLoading ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <span className="ml-2 text-gray-600">Loading calculations...</span>
+            <span className="ml-2 text-gray-600">
+              {isLoading ? 'Loading calculations...' : 'Loading configuration...'}
+            </span>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -400,7 +434,7 @@ const CalculationBuilder = () => {
               </div>
             ))}
             
-            {(selectedFilter === 'all' ? calculations : filteredCalculations).length === 0 && !isLoading && (
+            {(selectedFilter === 'all' ? calculations : filteredCalculations).length === 0 && !isLoading && !fieldsLoading && (
               <div className="text-center py-8 text-gray-500">
                 No calculations available. Create your first calculation above.
               </div>
@@ -426,11 +460,18 @@ const CalculationBuilder = () => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-6">
-                  {error}
+              {fieldsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-600">Loading calculation configuration...</span>
                 </div>
-              )}
+              ) : (
+                <>
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-6">
+                      {error}
+                    </div>
+                  )}
 
               <div className="space-y-6">
                 {/* Basic Information */}
@@ -533,21 +574,35 @@ const CalculationBuilder = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Source Field *
                     </label>
-                    <select
-                      value={calculation.source_field}
-                      onChange={(e) => setCalculation({ ...calculation, source_field: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select a field...</option>
-                      {availableFields.map(field => (
-                        <option key={field.value} value={field.value}>
-                          {field.label} ({field.type})
-                        </option>
-                      ))}
-                    </select>
+                    {fieldsLoading ? (
+                      <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                        <span className="text-gray-500">Loading fields...</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={calculation.source_field}
+                        onChange={(e) => setCalculation({ ...calculation, source_field: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={!calculation.source || getAvailableFields(calculation.source).length === 0}
+                      >
+                        <option value="">Select a field...</option>
+                        {getAvailableFields(calculation.source).map(field => (
+                          <option key={field.value} value={field.value}>
+                            {field.label} ({field.type})
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <p className="text-xs text-gray-500 mt-1">
-                      Available fields from {calculation.source} model
+                      {calculation.source ? `Available fields from ${calculation.source} model` : 'Select a source model first'}
                     </p>
+                    {/* Show field description if available */}
+                    {calculation.source_field && getAvailableFields(calculation.source).find(f => f.value === calculation.source_field)?.description && (
+                      <p className="text-xs text-blue-600 mt-1">
+                        {getAvailableFields(calculation.source).find(f => f.value === calculation.source_field).description}
+                      </p>
+                    )}
                   </div>
 
                   {/* Weight Field for Weighted Average */}
@@ -556,21 +611,35 @@ const CalculationBuilder = () => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Weight Field *
                       </label>
-                      <select
-                        value={calculation.weight_field}
-                        onChange={(e) => setCalculation({ ...calculation, weight_field: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Select weight field...</option>
-                        {availableFields.filter(f => f.type === 'currency' || f.type === 'number').map(field => (
-                          <option key={field.value} value={field.value}>
-                            {field.label}
-                          </option>
-                        ))}
-                      </select>
+                      {fieldsLoading ? (
+                        <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 flex items-center">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                          <span className="text-gray-500">Loading fields...</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={calculation.weight_field}
+                          onChange={(e) => setCalculation({ ...calculation, weight_field: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={!calculation.source || getAvailableFields(calculation.source).length === 0}
+                        >
+                          <option value="">Select weight field...</option>
+                          {getAvailableFields(calculation.source).filter(f => f.type === 'currency' || f.type === 'number').map(field => (
+                            <option key={field.value} value={field.value}>
+                              {field.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <p className="text-xs text-gray-500 mt-1">
                         Field to use as weight for the weighted average calculation
                       </p>
+                      {/* Show weight field description if available */}
+                      {calculation.weight_field && getAvailableFields(calculation.source).find(f => f.value === calculation.weight_field)?.description && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          {getAvailableFields(calculation.source).find(f => f.value === calculation.weight_field).description}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -589,7 +658,9 @@ const CalculationBuilder = () => {
                     <strong> Level:</strong> {calculation.level}
                   </div>
                 </div>
-              </div>
+                                </div>
+                </>
+              )}
             </div>
 
             {/* Modal Footer */}
@@ -597,13 +668,13 @@ const CalculationBuilder = () => {
               <button
                 onClick={handleCloseModal}
                 className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                disabled={isSaving}
+                disabled={isSaving || fieldsLoading}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveCalculation}
-                disabled={isSaving}
+                disabled={isSaving || fieldsLoading}
                 className="flex items-center gap-2 bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400"
               >
                 {isSaving ? (

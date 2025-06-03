@@ -51,10 +51,8 @@ class ReportService:
         query = self.config_db.query(Calculation).filter(Calculation.is_active == True)
         
         if group_level:
-            # Show calculations that match the group_level or are marked as 'both'
-            query = query.filter(
-                (Calculation.group_level == group_level) | (Calculation.group_level == 'both')
-            )
+            # Show calculations that match the exact group_level
+            query = query.filter(Calculation.group_level == group_level)
         
         calculations = query.order_by(Calculation.name).all()
         return [
@@ -264,7 +262,7 @@ class ReportService:
             'name': calculation_data.get('name', 'preview_calc'),
             'formula': calculation_data.get('formula', ''),
             'aggregation_method': calculation_data.get('aggregation_method', ''),
-            'group_level': calculation_data.get('group_level', 'both'),
+            'group_level': calculation_data.get('group_level', 'deal'),
             'source_tables': calculation_data.get('source_tables', [])
         }
         
@@ -276,35 +274,28 @@ class ReportService:
                 'cycle_code': 202404
             }
         
-        # Build SQL for both deal and tranche levels if group_level is 'both'
+        # Build SQL for the specific group level only
         filter_builder = FilterBuilder()
         query_builder = ReportQueryBuilder(filter_builder)
         
         result = {}
+        group_level = temp_calculation['group_level']
         
-        if temp_calculation['group_level'] in ['deal', 'both']:
-            # Generate deal-level SQL
-            deal_query, deal_params = query_builder.preview_calculation_subquery(
-                temp_calculation, 
-                aggregation_level="deal",
-                sample_deals=sample_filters['selected_deals'],
-                sample_tranches=sample_filters['selected_tranches'],
-                sample_cycle=sample_filters['cycle_code']
-            )
-            result['deal_level_sql'] = deal_query
-            result['deal_level_params'] = deal_params
+        # Generate SQL for the specific level
+        query, params = query_builder.preview_calculation_subquery(
+            temp_calculation, 
+            aggregation_level=group_level,
+            sample_deals=sample_filters['selected_deals'],
+            sample_tranches=sample_filters['selected_tranches'],
+            sample_cycle=sample_filters['cycle_code']
+        )
         
-        if temp_calculation['group_level'] in ['tranche', 'both']:
-            # Generate tranche-level SQL  
-            tranche_query, tranche_params = query_builder.preview_calculation_subquery(
-                temp_calculation,
-                aggregation_level="tranche",
-                sample_deals=sample_filters['selected_deals'],
-                sample_tranches=sample_filters['selected_tranches'],
-                sample_cycle=sample_filters['cycle_code']
-            )
-            result['tranche_level_sql'] = tranche_query
-            result['tranche_level_params'] = tranche_params
+        if group_level == 'deal':
+            result['deal_level_sql'] = query
+            result['deal_level_params'] = params
+        else:
+            result['tranche_level_sql'] = query
+            result['tranche_level_params'] = params
         
         return result
 

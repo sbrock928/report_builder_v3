@@ -205,47 +205,47 @@ async def seed_default_calculations():
         # Default calculations using actual TrancheBal fields
         default_calcs = [
             Calculation(
-                name="total_ending_balance",
+                name="Total Ending Balance",
                 description="Sum of tranche ending balance amounts",
                 formula="SUM(tb.tr_end_bal_amt)",
                 aggregation_method="SUM",
-                group_level="both",
+                group_level="deal",
                 source_tables=["tranchebal tb"],
                 created_by="system"
             ),
             Calculation(
-                name="total_principal_released",
-                description="Sum of principal release losses",
-                formula="SUM(tb.tr_prin_rel_ls_amt)",
-                aggregation_method="SUM",
-                group_level="both",
-                source_tables=["tranchebal tb"],
-                created_by="system"
-            ),
-            Calculation(
-                name="weighted_avg_pass_thru_rate",
-                description="Weighted average pass-through rate",
-                formula="SUM(tb.tr_end_bal_amt * tb.tr_pass_thru_rte) / NULLIF(SUM(tb.tr_end_bal_amt), 0)",
-                aggregation_method="WEIGHTED_AVG",
-                group_level="both",
-                source_tables=["tranchebal tb"],
-                created_by="system"
-            ),
-            Calculation(
-                name="total_interest_distribution",
-                description="Sum of interest distribution amounts",
-                formula="SUM(tb.tr_int_dstrb_amt)",
-                aggregation_method="SUM",
-                group_level="both",
-                source_tables=["tranchebal tb"],
-                created_by="system"
-            ),
-            Calculation(
-                name="total_principal_distribution",
+                name="Total Principal Dist",
                 description="Sum of principal distribution amounts",
                 formula="SUM(tb.tr_prin_dstrb_amt)",
                 aggregation_method="SUM",
-                group_level="both",
+                group_level="deal",
+                source_tables=["tranchebal tb"],
+                created_by="system"
+            ),
+            Calculation(
+                name="Total Interest Dist",
+                description="Sum of interest distribution amounts",
+                formula="SUM(tb.tr_int_dstrb_amt)",
+                aggregation_method="SUM",
+                group_level="deal",
+                source_tables=["tranchebal tb"],
+                created_by="system"
+            ),
+            Calculation(
+                name="Tranche Ending Balance",
+                description="Sum of tranche ending balance amounts at tranche level",
+                formula="SUM(tb.tr_end_bal_amt)",
+                aggregation_method="SUM",
+                group_level="tranche",
+                source_tables=["tranchebal tb"],
+                created_by="system"
+            ),
+            Calculation(
+                name="Weighted Avg Pass Thru Rate",
+                description="Weighted average pass-through rate",
+                formula="SUM(tb.tr_end_bal_amt * tb.tr_pass_thru_rte) / NULLIF(SUM(tb.tr_end_bal_amt), 0)",
+                aggregation_method="WEIGHTED_AVG",
+                group_level="deal",
                 source_tables=["tranchebal tb"],
                 created_by="system"
             )

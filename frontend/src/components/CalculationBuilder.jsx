@@ -15,7 +15,7 @@ const CalculationBuilder = () => {
     name: '',
     description: '',
     aggregation_method: 'SUM',
-    group_level: 'both',
+    group_level: 'deal',
     source_field: '',
     filter_conditions: [],
     dependencies: []
@@ -23,7 +23,6 @@ const CalculationBuilder = () => {
 
   // Available group levels
   const groupLevels = [
-    { value: 'both', label: 'Both (Deal & Tranche)', description: 'Calculation works at both aggregation levels' },
     { value: 'deal', label: 'Deal Level Only', description: 'Only appears in deal-level reports' },
     { value: 'tranche', label: 'Tranche Level Only', description: 'Only appears in tranche-level reports' }
   ];
@@ -311,7 +310,7 @@ const CalculationBuilder = () => {
       name: calculation.name,
       description: calculation.description || '',
       aggregation_method: calculation.aggregation_method,
-      group_level: calculation.group_level || 'both',
+      group_level: calculation.group_level || 'deal',
       source_field: sourceField,
       filter_conditions: [],
       dependencies: calculation.dependencies || []
@@ -329,7 +328,7 @@ const CalculationBuilder = () => {
       name: '',
       description: '',
       aggregation_method: 'SUM',
-      group_level: 'both',
+      group_level: 'deal',
       source_field: '',
       filter_conditions: [],
       dependencies: []

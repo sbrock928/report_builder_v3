@@ -5,6 +5,8 @@ import { useNotification } from './NotificationSystem';
 
 const CalculationBuilder = () => {
   const [calculations, setCalculations] = useState([]);
+  const [filteredCalculations, setFilteredCalculations] = useState([]);
+  const [selectedFilter, setSelectedFilter] = useState('all'); // New filter state
   const [isEditing, setIsEditing] = useState(false);
   const [editingCalculation, setEditingCalculation] = useState(null);
   const [error, setError] = useState(null);
@@ -74,6 +76,11 @@ const CalculationBuilder = () => {
     fetchCalculations();
   }, []);
 
+  // New useEffect to filter calculations when filter changes
+  useEffect(() => {
+    filterCalculations();
+  }, [calculations, selectedFilter]);
+
   const fetchCalculations = async () => {
     setIsLoading(true);
     try {
@@ -91,6 +98,20 @@ const CalculationBuilder = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // New function to filter calculations based on selected filter
+  const filterCalculations = () => {
+    let filtered = calculations;
+    
+    if (selectedFilter === 'deal') {
+      filtered = calculations.filter(calc => calc.group_level === 'deal');
+    } else if (selectedFilter === 'tranche') {
+      filtered = calculations.filter(calc => calc.group_level === 'tranche');
+    }
+    // 'all' shows all calculations
+    
+    setFilteredCalculations(filtered);
   };
 
   const handlePreviewSQL = async (calcId) => {
@@ -448,11 +469,36 @@ const CalculationBuilder = () => {
         </div>
       )}
 
+      {/* Filter and Sort Section */}
+      <div className="bg-white rounded-lg p-6 mb-6 border-2 border-blue-200">
+        <h2 className="text-xl font-semibold mb-4 text-gray-800">Filter Calculations</h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Group Level
+            </label>
+            <select
+              value={selectedFilter}
+              onChange={(e) => setSelectedFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All</option>
+              <option value="deal">Deal Level</option>
+              <option value="tranche">Tranche Level</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Filter calculations by their group level
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Available Calculations List */}
       <div>
         <h2 className="text-xl font-semibold mb-4 text-gray-800">Available Calculations</h2>
         <div className="grid gap-4">
-          {calculations.map((calc) => (
+          {(selectedFilter === 'all' ? calculations : filteredCalculations).map((calc) => (
             <div key={calc.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start">
                 <div className="flex-1">
@@ -528,7 +574,7 @@ const CalculationBuilder = () => {
             </div>
           ))}
           
-          {calculations.length === 0 && (
+          {(selectedFilter === 'all' ? calculations : filteredCalculations).length === 0 && (
             <div className="text-center py-8 text-gray-500">
               No calculations available. Create your first calculation above.
             </div>
